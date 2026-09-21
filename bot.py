@@ -48,14 +48,10 @@ FOOTER = ""
 PING_ROLE_ID = "1551540516238131270"
 
 def get(url):
-       if FOOTER or PING_ROLE_ID:
-        content = f"<@&{PING_ROLE_ID}> {FOOTER}".strip() if PING_ROLE_ID else FOOTER
-        # flags=4 stops Discord adding a big link preview under the footer
-        payload = {"content": content, "flags": 4}
-        if PING_ROLE_ID:  # only this role can be pinged, nothing else
-            payload["allowed_mentions"] = {"roles": [PING_ROLE_ID]}
-        r = requests.post(WEBHOOK, json=payload, timeout=30)
-        r.raise_for_status()
+     def get(url):
+    r = requests.get(url, headers=HEADERS, timeout=30)
+    r.raise_for_status()
+    return r.text
 
 
 def card_container(anchor):
@@ -164,6 +160,14 @@ def post(embeds):
         r.raise_for_status()
         time.sleep(1)
 
+    if FOOTER or PING_ROLE_ID:
+        content = f"<@&{PING_ROLE_ID}> {FOOTER}".strip() if PING_ROLE_ID else FOOTER
+        # flags=4 stops Discord adding a big link preview under the footer
+        payload = {"content": content, "flags": 4}
+        if PING_ROLE_ID:  # only this role can be pinged, nothing else
+            payload["allowed_mentions"] = {"roles": [PING_ROLE_ID]}
+        r = requests.post(WEBHOOK, json=payload, timeout=30)
+        r.raise_for_status()
     if FOOTER:  # flags=4 stops Discord adding a big link preview under the footer
         r = requests.post(WEBHOOK, json={"content": FOOTER, "flags": 4}, timeout=30)
         r.raise_for_status()
