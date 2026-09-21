@@ -9,8 +9,10 @@ on:
     - cron: "0 18 * * *"
   workflow_dispatch:       # lets you run it manually from the Actions tab
     inputs:
-      dry_run:
-        description: "Dry run (show posts in the log, don't send to Discord)"
+      test:
+        # Ticked = post every SBC currently labelled New to Discord, even if it
+        # was posted before. Unticked = normal run (only posts new ones).
+        description: "Test"
         type: boolean
         default: false
 
@@ -51,7 +53,7 @@ jobs:
         if: steps.gate.outputs.go == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          TEST_MODE: ${{ inputs.test && '1' || '' }}
 
       - name: Save posted list
         if: steps.gate.outputs.go == 'true'
