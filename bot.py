@@ -457,7 +457,8 @@ def find_new_sbcs(html):
         # requirements and image detection.
         try:
             page = BeautifulSoup(get(url), "html.parser")
-          def debug_page(page):
+  
+def debug_page(page):
     html = str(page).replace('\\"', '"')
     for word in ("expire", "repeat"):
         for m in re.finditer(word, html, re.I):
