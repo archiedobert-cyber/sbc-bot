@@ -195,6 +195,106 @@ def find_image(card, url):
 
     return None
 
+    def is_generic(src):
+        if not src:
+            return True
+
+        src = src.lower()
+
+        return (
+            "fut-social" in src
+            or "favicon" in src
+            or "logo" in src
+            or "placeholder" in src
+            or "default-image" in src
+        )
+
+    def clean(src):
+        if not src or src.startswith("data:"):
+            return None
+
+        src = urljoin(BASE, src.strip())
+
+        if is_generic(src):
+            return None
+
+        return src
+
+    # 1) Images directly on the SBC card
+    for img in card.find_all("img"):
+        for attr in (
+            "src",
+            "data-src",
+            "data-original",
+            "data-lazy-src",
+            "data-lazy",
+            "data-image",
+            "data-url",
+        ):
+            image = clean(img.get(attr))
+            if image:
+                return image
+
+        # Check lazy-loaded srcset
+        srcset = img.get("srcset") or img.get("data-srcset")
+        if srcset:
+            for item in srcset.split(","):
+                image = clean(item.strip().split()[0])
+                if image:
+                    return image
+
+    # 2) Fetch the SBC page once and check its metadata
+    try:
+        page = BeautifulSoup(get(url), "html.parser")
+
+        # Open Graph
+        for prop in ("og:image", "og:image:url"):
+            meta = page.find("meta", attrs={"property": prop})
+
+            if meta:
+                image = clean(meta.get("content"))
+                if image:
+                    return image
+
+        # Twitter/X image
+        for name in ("twitter:image", "twitter:image:src"):
+            meta = page.find("meta", attrs={"name": name})
+
+            if meta:
+                image = clean(meta.get("content"))
+                if image:
+                    return image
+
+        # 3) Check every image on the SBC page
+        for img in page.find_all("img"):
+            for attr in (
+                "src",
+                "data-src",
+                "data-original",
+                "data-lazy-src",
+                "data-lazy",
+                "data-image",
+                "data-url",
+            ):
+                image = clean(img.get(attr))
+
+                if image:
+                    return image
+
+            srcset = img.get("srcset") or img.get("data-srcset")
+
+            if srcset:
+                for item in srcset.split(","):
+                    image = clean(item.strip().split()[0])
+
+                    if image:
+                        return image
+
+    except requests.RequestException as e:
+        print(f"Could not fetch SBC page for image: {e}")
+
+    return None
+
 def to_embed(sbc):
     description = sbc["description"]
 
@@ -222,7 +322,6 @@ def to_embed(sbc):
     return embed
 
 
-```python
 def find_requirements(page):
     """Extract SBC requirements while keeping their original wording."""
 
@@ -325,8 +424,6 @@ def find_new_sbcs(html):
     return new
 
 
-def to_embed(sbc):
-```python
 def to_embed(sbc):
     description = sbc["description"]
 
