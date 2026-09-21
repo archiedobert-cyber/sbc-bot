@@ -378,8 +378,7 @@ def find_requirements(page):
         cleaned.append(requirement)
 
     return cleaned
-```
-
+  
 
 def find_new_sbcs(html):
     soup = BeautifulSoup(html, "html.parser")
@@ -419,7 +418,6 @@ def find_new_sbcs(html):
                 "image": find_image(card, url),
             }
         )
-```
 
     return new
 
