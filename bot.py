@@ -349,7 +349,8 @@ def to_embed(sbc):
         description += "\n\n" + sbc["description"]
 
         if sbc["expires"]:
-        description += f"\n\n## ⏰ Available for\n{sbc['expires']}"
+        description += (
+          "\n\n## ⏰ Available for\n{sbc['expires']}"
 
     if sbc["requirements"]:
         description += (
