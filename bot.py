@@ -38,7 +38,7 @@ NEW_BADGE = re.compile(r"^\s*new\s*$", re.I)
 GENERIC_OG_IMAGE = "fut-social"  # the site-wide fallback image, not SBC-specific
 
 # Title line shown above the SBC cards - edit the text/emojis however you like
-HEADER = "## 🚨🆕 **NEW SBC ALERT** 🆕🚨\n *Hover Bot brought to you by 𝐒𝐊𝐄𝐋𝐄𝐓𝐎𝐑*""
+HEADER = "## 🚨🆕 **NEW SBC ALERT** 🆕🚨\n- *Hover Bot brought to you by 𝐒𝐊𝐄𝐋𝐄𝐓𝐎𝐑*""
 
 # Message posted at the very bottom, after all the SBC cards.
 # Edit the text/emojis/link however you like, or set it to "" for no footer.
