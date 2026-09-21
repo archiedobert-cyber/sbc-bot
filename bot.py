@@ -365,11 +365,7 @@ def to_embed(sbc):
 
     if sbc["repeatable"]:
         description += f"\n\n## 🔁 Repeatable\n{sbc['repeatable']}"
-    
-  embed = {
-        "description": description.strip()[:4000],
-        "color": 0x2ECC71,
-    }
+  
 
     if sbc["image"]:
         embed["image"] = {
