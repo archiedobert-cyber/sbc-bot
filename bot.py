@@ -20,6 +20,7 @@ LIST_URL = f"{BASE}/sbc/"
 STATE_FILE = Path("posted.json")  # remembers what's already been posted
 WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL")
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
+TEST_MODE = os.environ.get("TEST_MODE") == "1"  # post every current "New" SBC, even if already posted
 
 HEADERS = {
     "User-Agent": (
@@ -158,8 +159,8 @@ def main():
         sys.exit("DISCORD_WEBHOOK_URL is not set")
 
     posted = set(json.loads(STATE_FILE.read_text())) if STATE_FILE.exists() else set()
-    new = [s for s in find_new_sbcs(get(LIST_URL)) if s["url"] not in posted]
-    print(f"{len(new)} new SBC(s) not yet posted")
+    new = [s for s in find_new_sbcs(get(LIST_URL)) if TEST_MODE or s["url"] not in posted]
+    print(f"{len(new)} new SBC(s) to post" + (" (test mode)" if TEST_MODE else ""))
     if not new:
         return
 
