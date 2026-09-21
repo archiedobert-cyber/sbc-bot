@@ -303,13 +303,13 @@ def to_embed(sbc):
 
     if sbc["requirements"]:
         description += (
-            "\n\n## 🧩 Requirements\n"
+            "\n\n### 🧩 Requirements\n"
             + "\n".join(sbc["requirements"])
         )
 
     if sbc["rewards"]:
         description += (
-            "\n\n## 🎁 Rewards\n"
+            "\n\n### 🎁 Rewards\n"
             + "\n".join(sbc["rewards"])
         )
 
