@@ -104,8 +104,8 @@ IMAGE_ATTRS = (
 )
 
 
-def find_image(card, url):
-    """Find an SBC-specific image using several possible sources."""
+def find_image(card, url, page=None):
+    """Find an SBC-specific image, preferring fut.gg's own SBC artwork."""
 
     def is_generic(src):
         src = src.lower()
@@ -125,115 +125,116 @@ def find_image(card, url):
             return None
         return src
 
-    def image_from_tags(container):
-        for img in container.find_all("img"):
-            for attr in IMAGE_ATTRS:
-                image = clean(img.get(attr))
-                if image:
-                    return image
+    def sources(img):
+        """Every image URL an <img> tag might carry (src, lazy-load attrs, srcset)."""
+        for attr in IMAGE_ATTRS:
+            yield img.get(attr)
+        srcset = img.get("srcset") or img.get("data-srcset")
+        if srcset:
+            for item in srcset.split(","):
+                parts = item.strip().split()
+                if parts:
+                    yield parts[0]
 
-            # Check lazy-loaded srcset
-            srcset = img.get("srcset") or img.get("data-srcset")
-            if srcset:
-                for item in srcset.split(","):
-                    parts = item.strip().split()
-                    if not parts:
-                        continue
-                    image = clean(parts[0])
-                    if image:
-                        return image
+    def first_image(container, must_contain=None):
+        for img in container.find_all("img"):
+            for src in sources(img):
+                image = clean(src)
+                if image and (must_contain is None or must_contain in image):
+                    return image
         return None
 
-    # 1) Images directly on the SBC card
-    image = image_from_tags(card)
+    # 1) fut.gg's own artwork for this SBC (game-assets.fut.gg/.../sbcs/...)
+    image = first_image(card, "/sbcs/")
     if image:
         return image
 
-    # 2) Fetch the SBC page and check its metadata
-    try:
-        page = BeautifulSoup(get(url), "html.parser")
+    if page is None:
+        try:
+            page = BeautifulSoup(get(url), "html.parser")
+        except requests.RequestException as e:
+            print(f"Could not fetch SBC page for image: {e}")
 
-        # Open Graph
-        for prop in ("og:image", "og:image:url"):
-            meta = page.find("meta", attrs={"property": prop})
-            if meta:
-                image = clean(meta.get("content"))
-                if image:
-                    return image
-
-        # Twitter/X image
-        for name in ("twitter:image", "twitter:image:src"):
-            meta = page.find("meta", attrs={"name": name})
-            if meta:
-                image = clean(meta.get("content"))
-                if image:
-                    return image
-
-        # 3) Check every image on the SBC page
-        image = image_from_tags(page)
+    if page is not None:
+        image = first_image(page, "/sbcs/")
         if image:
             return image
 
-    except requests.RequestException as e:
-        print(f"Could not fetch SBC page for image: {e}")
+    # 2) Any other image on the card
+    image = first_image(card)
+    if image:
+        return image
+
+    if page is not None:
+        # 3) Page metadata (Open Graph, then Twitter/X)
+        for attr_name, names in (
+            ("property", ("og:image", "og:image:url")),
+            ("name", ("twitter:image", "twitter:image:src")),
+        ):
+            for name in names:
+                meta = page.find("meta", attrs={attr_name: name})
+                if meta:
+                    image = clean(meta.get("content"))
+                    if image:
+                        return image
+
+        # 4) Any image on the SBC page
+        return first_image(page)
 
     return None
 
 
+REQUIREMENT_TERMS = (
+    "min.",
+    "minimum",
+    "max.",
+    "maximum",
+    "players from",
+    "squad rating",
+    "team chemistry",
+    "number of players",
+    "overall rating",
+    "rating:",
+    "chemistry:",
+    "league:",
+    "club:",
+    "nation:",
+    "country:",
+    "position:",
+    "positions:",
+    "rare players",
+    "gold players",
+    "silver players",
+    "bronze players",
+)
+
+
 def find_requirements(page):
     """Extract SBC requirements while keeping their original wording."""
-    requirements = []
 
-    # Look at individual visible elements first.
-    for element in page.find_all(["li", "p", "div", "span", "td"]):
-        text = element.get_text(" ", strip=True)
+    def collect(elements):
+        found = []
+        for element in elements:
+            text = element.get_text(" ", strip=True)
+            if not text or len(text) > 180:
+                continue
+            if any(term in text.lower() for term in REQUIREMENT_TERMS):
+                text = re.sub(r"\s+", " ", text).strip()
+                if text not in found:
+                    found.append(text)
+        return found
 
-        if not text or len(text) > 180:
-            continue
+    def dedupe(items):
+        # Drop entries that are just part of a longer entry (nested HTML elements).
+        return [r for r in items if not any(r != o and r in o for o in items)]
 
-        lower = text.lower()
+    # Requirements are bullet-list items on the SBC page, so try those first.
+    requirements = dedupe(collect(page.find_all("li")))
+    if requirements:
+        return requirements
 
-        if any(term in lower for term in (
-            "min.",
-            "minimum",
-            "max.",
-            "maximum",
-            "players from",
-            "squad rating",
-            "team chemistry",
-            "number of players",
-            "overall rating",
-            "rating:",
-            "chemistry:",
-            "league:",
-            "club:",
-            "nation:",
-            "country:",
-            "position:",
-            "positions:",
-            "rare players",
-            "gold players",
-            "silver players",
-            "bronze players",
-        )):
-            text = re.sub(r"\s+", " ", text).strip()
-
-            if text not in requirements:
-                requirements.append(text)
-
-    # Remove duplicate entries caused by nested HTML elements.
-    cleaned = []
-
-    for requirement in requirements:
-        if any(
-            requirement != other and requirement in other
-            for other in requirements
-        ):
-            continue
-
-        cleaned.append(requirement)
-
-    return cleaned
+    # Only fall back to broader elements if there are no matching list items.
+    return dedupe(collect(page.find_all(["p", "div", "span", "td"])))
 
 
 def page_text(page):
@@ -391,7 +392,7 @@ def find_new_sbcs(html):
                 "requirements": requirements,
                 "expires": time_left(expiry) if expiry else "",
                 "repeatable": repeatable,
-                "image": find_image(card, url),
+                "image": find_image(card, url, page),
             }
         )
 
