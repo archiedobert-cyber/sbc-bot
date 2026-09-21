@@ -267,25 +267,25 @@ def to_embed(sbc):
     description = f"## 🆕 {sbc['title']}\n[More details]({sbc['url']})"
 
     if sbc["description"]:
-        description += "\n\n" + sbc["description"]
+        description += "\n" + sbc["description"]
 
     if sbc["requirements"]:
         description += (
-            "\n\n## 🧩 Requirements\n"
+            "\n## 🧩 Requirements\n"
             + "\n".join(sbc["requirements"])
         )
 
     if sbc["rewards"]:
         description += (
-            "\n\n## 🎁 Rewards\n"
+            "\n## 🎁 Rewards\n"
             + "\n".join(sbc["rewards"])
         )
 
     if sbc["repeatable"]:
-        description += f"\n\n### 🔁 Repeatable\n{sbc['repeatable']}"
+        description += f"\n## 🔁 Repeatable\n{sbc['repeatable']}"
 
     if sbc["expires"]:
-        description += f"\n\n### ⏰ Available for\n{sbc['expires']}"
+        description += f"\n## ⏰ Available for\n{sbc['expires']}"
 
     embed = {
         "description": description.strip()[:4000],
