@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 """Posts SBCs labelled "New" on fut.gg/sbc to a Discord channel via webhook.
 
 Env vars:
@@ -294,12 +295,61 @@ def find_image(card, url):
         print(f"Could not fetch SBC page for image: {e}")
 
     return None
+  
+def find_expiry(page):
+    """Return the SBC's expiry as a UTC datetime, or None."""
+    html = str(page).replace('\\"', '"')  # un-escape JSON embedded in the page
+    m = re.search(
+        r'"(?:expiresAt|expirationDate|expiryDate|expiry|expires|endsAt|endDate)"\s*:\s*"?([^",}]+)"?',
+        html,
+    )
+    if not m:
+        return None
+    value = m.group(1).strip()
+    try:
+        if value.isdigit():  # unix timestamp (seconds or milliseconds)
+            ts = int(value)
+            return datetime.fromtimestamp(ts / 1000 if ts > 10**11 else ts, timezone.utc)
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def time_left(expiry):
+    secs = int((expiry - datetime.now(timezone.utc)).total_seconds())
+    if secs <= 0:
+        return "Expired"
+    days, rem = divmod(secs, 86400)
+    hours, rem = divmod(rem, 3600)
+    mins = rem // 60
+    parts = []
+    if days:
+        parts.append(f"{days} day{'s' if days != 1 else ''}")
+    if hours:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    if mins and not days:
+        parts.append(f"{mins} min{'s' if mins != 1 else ''}")
+    return " ".join(parts) or "Less than a minute"
+
+
+def find_repeatable(page):
+    """Return e.g. '5x', or '' if the SBC isn't repeatable / can't be found."""
+    html = str(page).replace('\\"', '"')
+    m = re.search(
+        r'"(?:repeatable|repeatableCount|repeatCount|repeats|maxRepeats|repetitions)"\s*:\s*(\d+)',
+        html,
+    )
+    return f"{m.group(1)}x" if m else ""
+
 
 def to_embed(sbc):
     description = f"## 🆕 {sbc['title']}\n[More details]({sbc['url']})"
 
     if sbc["description"]:
         description += "\n\n" + sbc["description"]
+
+        if sbc["expires"]:
+        description += f"\n\n## ⏰ Available for\n{sbc['expires']}"
 
     if sbc["requirements"]:
         description += (
@@ -313,6 +363,8 @@ def to_embed(sbc):
             + "\n".join(sbc["rewards"])
         )
 
+    if sbc["repeatable"]:
+        description += f"\n\n## 🔁 Repeatable\n{sbc['repeatable']}"
     embed = {
         "description": description.strip()[:4000],
         "color": 0x2ECC71,
@@ -413,6 +465,8 @@ def find_new_sbcs(html):
             page = None
 
         requirements = find_requirements(page) if page else []
+      expiry = find_expiry(page) if page else None
+repeatable = find_repeatable(page) if page else ""
 
         new.append(
             {
@@ -422,6 +476,8 @@ def find_new_sbcs(html):
                 "rewards": find_rewards(card),
                 "requirements": requirements,
                 "image": find_image(card, url),
+              "expires": time_left(expiry) if expiry else "",
+"repeatable": repeatable,
             }
         )
 
