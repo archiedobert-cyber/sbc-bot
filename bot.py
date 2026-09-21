@@ -433,7 +433,6 @@ def to_embed(sbc):
 
     if sbc["rewards"]:
         description += "\n\n**Rewards:** " + ", ".join(sbc["rewards"])
-```
 
     embed = {
         "title": f"🆕 {sbc['title']}"[:256],
