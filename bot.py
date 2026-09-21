@@ -457,7 +457,17 @@ def find_new_sbcs(html):
         # requirements and image detection.
         try:
             page = BeautifulSoup(get(url), "html.parser")
-  
+          
+      requirements = find_requirements(page) if page else []
+        if page:
+            debug_page(page)
+
+def debug_page(page):
+    html = str(page).replace('\\"', '"')
+    for word in ("expire", "repeat"):
+        for m in re.finditer(word, html, re.I):
+            print(word, "->", html[max(0, m.start() - 60): m.end() + 80].replace("\n", " "))
+
 def post(embeds):
     for i in range(0, len(embeds), 10):  # Discord allows 10 embeds per message
         payload = {"embeds": embeds[i : i + 10]}
