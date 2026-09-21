@@ -195,7 +195,6 @@ def find_image(card, url):
 
     return None
 
-```python
 def to_embed(sbc):
     description = sbc["description"]
 
