@@ -194,7 +194,7 @@ def find_image(card, url):
         print(f"Could not fetch SBC page for image: {e}")
 
     return None
-```
+
 ```python
 def to_embed(sbc):
     description = sbc["description"]
