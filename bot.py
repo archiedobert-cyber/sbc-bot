@@ -195,6 +195,33 @@ def find_image(card, url):
 
     return None
 ```
+```python
+def to_embed(sbc):
+    description = sbc["description"]
+
+    if sbc["requirements"]:
+        description += (
+            "\n\n**Requirements:**\n"
+            + "\n".join(sbc["requirements"])
+        )
+
+    if sbc["rewards"]:
+        description += "\n\n**Rewards:** " + ", ".join(sbc["rewards"])
+
+    embed = {
+        "title": f"🆕 {sbc['title']}"[:256],
+        "url": sbc["url"],
+        "description": description.strip()[:4000],
+        "color": 0x2ECC71,
+    }
+
+    if sbc["image"]:
+        embed["image"] = {
+            "url": sbc["image"]
+        }
+
+    return embed
+
 
 ```python
 def find_requirements(page):
