@@ -38,17 +38,18 @@ NEW_BADGE = re.compile(r"^\s*new\s*$", re.I)
 GENERIC_OG_IMAGE = "fut-social"  # the site-wide fallback image, not SBC-specific
 
 # Title line shown above the SBC cards - edit the text/emojis however you like
-HEADER = "## 🚨🆕 **NEW SBC ALERT** 🆕🚨\n-# *Hover Bot brought to you by 𝐒𝐊𝐄𝐋𝐄𝐓𝐎𝐑*"
+HEADER = "## 🚨🆕 **NEW SBC ALERT** 🆕🚨"
 
 # Message posted at the very bottom, after all the SBC cards.
 # Edit the text/emojis/link however you like, or set it to "" for no footer.
-FOOTER = ""
+FOOTER = "👀 Don't miss out - see every SBC here: https://www.fut.gg/sbc/"
+
 # Role to ping in the footer (pings once per post). Paste the role's ID - numbers
 # only, e.g. "123456789012345678" - or leave as "" for no ping.
-PING_ROLE_ID = "1551540516238131270"
+PING_ROLE_ID = ""
+
 
 def get(url):
-     def get(url):
     r = requests.get(url, headers=HEADERS, timeout=30)
     r.raise_for_status()
     return r.text
@@ -167,9 +168,6 @@ def post(embeds):
         if PING_ROLE_ID:  # only this role can be pinged, nothing else
             payload["allowed_mentions"] = {"roles": [PING_ROLE_ID]}
         r = requests.post(WEBHOOK, json=payload, timeout=30)
-        r.raise_for_status()
-    if FOOTER:  # flags=4 stops Discord adding a big link preview under the footer
-        r = requests.post(WEBHOOK, json={"content": FOOTER, "flags": 4}, timeout=30)
         r.raise_for_status()
 
 
