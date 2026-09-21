@@ -8,6 +8,11 @@ on:
     - cron: "0 17 * * *"
     - cron: "0 18 * * *"
   workflow_dispatch:       # lets you run it manually from the Actions tab
+    inputs:
+      dry_run:
+        description: "Dry run (show posts in the log, don't send to Discord)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write          # needed to save posted.json back to the repo
@@ -46,6 +51,7 @@ jobs:
         if: steps.gate.outputs.go == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
 
       - name: Save posted list
         if: steps.gate.outputs.go == 'true'
