@@ -89,7 +89,12 @@ def find_rewards(card):
         text = s.strip()
         if text and not s.find_parent("a") and re.search(r"pack|coins|pick|boost", text, re.I):
             rewards.append(text)
-    return rewards
+
+    # Drop description sentences (e.g. "Earn a pack containing 2 Gold Player
+    # Items, rated 79 or higher.") and keep just the reward names. If that would
+    # leave nothing, keep everything rather than post an empty section.
+    names = [r for r in rewards if not r.lower().startswith("earn ") and not r.endswith(".")]
+    return names or rewards
 
 
 IMAGE_ATTRS = (
@@ -264,9 +269,6 @@ def to_embed(sbc):
     if sbc["description"]:
         description += "\n\n" + sbc["description"]
 
-    if sbc["expires"]:
-        description += f"\n\n## ⏰ Available for\n{sbc['expires']}"
-
     if sbc["requirements"]:
         description += (
             "\n\n## 🧩 Requirements\n"
@@ -281,6 +283,9 @@ def to_embed(sbc):
 
     if sbc["repeatable"]:
         description += f"\n\n## 🔁 Repeatable\n{sbc['repeatable']}"
+
+    if sbc["expires"]:
+        description += f"\n\n## ⏰ Available for\n{sbc['expires']}"
 
     embed = {
         "description": description.strip()[:4000],
