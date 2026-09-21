@@ -296,7 +296,7 @@ def find_image(card, url):
     return None
 
 def to_embed(sbc):
-    description = f"## {sbc['title']}\n[More details]({sbc['url']})"
+    description = f"## 🆕 {sbc['title']}\n[More details]({sbc['url']})"
 
     if sbc["description"]:
         description += "\n\n" + sbc["description"]
