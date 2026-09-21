@@ -43,11 +43,19 @@ HEADER = "## 🚨🆕 **NEW SBC ALERT** 🆕🚨\n-# *Hover Bot brought to you b
 # Message posted at the very bottom, after all the SBC cards.
 # Edit the text/emojis/link however you like, or set it to "" for no footer.
 FOOTER = ""
+# Role to ping in the footer (pings once per post). Paste the role's ID - numbers
+# only, e.g. "123456789012345678" - or leave as "" for no ping.
+PING_ROLE_ID = ""
 
 def get(url):
-    r = requests.get(url, headers=HEADERS, timeout=30)
-    r.raise_for_status()
-    return r.text
+       if FOOTER or PING_ROLE_ID:
+        content = f"<@&{PING_ROLE_ID}> {FOOTER}".strip() if PING_ROLE_ID else FOOTER
+        # flags=4 stops Discord adding a big link preview under the footer
+        payload = {"content": content, "flags": 4}
+        if PING_ROLE_ID:  # only this role can be pinged, nothing else
+            payload["allowed_mentions"] = {"roles": [PING_ROLE_ID]}
+        r = requests.post(WEBHOOK, json=payload, timeout=30)
+        r.raise_for_status()
 
 
 def card_container(anchor):
