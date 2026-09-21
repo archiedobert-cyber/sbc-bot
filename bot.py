@@ -394,7 +394,7 @@ def find_new_sbcs(html):
     for url, anchors in groups.items():
         if not any(a.find(string=NEW_BADGE) for a in anchors):
             continue
-        ```python
+ 
         title = clean_title(anchors) or url.rstrip("/").split("/")[-1]
         card = card_container(anchors[0])
 
