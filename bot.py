@@ -38,8 +38,11 @@ NEW_BADGE = re.compile(r"^\s*new\s*$", re.I)
 GENERIC_OG_IMAGE = "fut-social"  # the site-wide fallback image, not SBC-specific
 
 # Title line shown above the SBC cards - edit the text/emojis however you like
-HEADER = "# 🚨🆕 **NEW SBC ALERT** 🆕🚨"
+HEADER = "## 🚨🆕 **NEW SBC ALERT** 🆕🚨"
 
+# Message posted at the very bottom, after all the SBC cards.
+# Edit the text/emojis/link however you like, or set it to "" for no footer.
+FOOTER = "Hover Bot brought to you by 𝐒𝐊𝐄𝐋𝐄𝐓𝐎𝐑"
 
 def get(url):
     r = requests.get(url, headers=HEADERS, timeout=30)
@@ -152,6 +155,10 @@ def post(embeds):
         r = requests.post(WEBHOOK, json=payload, timeout=30)
         r.raise_for_status()
         time.sleep(1)
+
+    if FOOTER:  # flags=4 stops Discord adding a big link preview under the footer
+        r = requests.post(WEBHOOK, json={"content": FOOTER, "flags": 4}, timeout=30)
+        r.raise_for_status()
 
 
 def main():
