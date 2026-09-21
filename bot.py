@@ -36,6 +36,9 @@ SBC_HREF = re.compile(
 NEW_BADGE = re.compile(r"^\s*new\s*$", re.I)
 GENERIC_OG_IMAGE = "fut-social"  # the site-wide fallback image, not SBC-specific
 
+# Title line shown above the SBC cards - edit the text/emojis however you like
+HEADER = "🚨🆕 **NEW SBC ALERT** 🆕🚨"
+
 
 def get(url):
     r = requests.get(url, headers=HEADERS, timeout=30)
@@ -142,7 +145,10 @@ def to_embed(sbc):
 
 def post(embeds):
     for i in range(0, len(embeds), 10):  # Discord allows 10 embeds per message
-        r = requests.post(WEBHOOK, json={"embeds": embeds[i : i + 10]}, timeout=30)
+        payload = {"embeds": embeds[i : i + 10]}
+        if i == 0:
+            payload["content"] = HEADER
+        r = requests.post(WEBHOOK, json=payload, timeout=30)
         r.raise_for_status()
         time.sleep(1)
 
