@@ -325,6 +325,10 @@ def to_embed(sbc):
             "url": sbc["image"]
         }
 
+    print("DEBUG EMBED:")
+    print(json.dumps(embed, indent=2, ensure_ascii=False))
+
+    return embed
 print("DEBUG EMBED:")
 print(json.dumps(embed, indent=2, ensure_ascii=False))
 
