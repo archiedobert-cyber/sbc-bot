@@ -458,34 +458,6 @@ def find_new_sbcs(html):
         try:
             page = BeautifulSoup(get(url), "html.parser")
   
-def debug_page(page):
-    html = str(page).replace('\\"', '"')
-    for word in ("expire", "repeat"):
-        for m in re.finditer(word, html, re.I):
-            print(word, "->", html[max(0, m.start() - 60): m.end() + 80].replace("\n", " "))
-        except requests.RequestException as e:
-            print(f"Could not fetch SBC page {url}: {e}")
-            page = None
-
-        requirements = find_requirements(page) if page else []
-      expiry = find_expiry(page) if page else None
-repeatable = find_repeatable(page) if page else ""
-
-        new.append(
-            {
-                "url": url,
-                "title": title,
-                "description": find_description(anchors, title),
-                "rewards": find_rewards(card),
-                "requirements": requirements,
-                "image": find_image(card, url),
-              "expires": time_left(expiry) if expiry else "",
-"repeatable": repeatable,
-            }
-        )
-
-    return new
-
 def post(embeds):
     for i in range(0, len(embeds), 10):  # Discord allows 10 embeds per message
         payload = {"embeds": embeds[i : i + 10]}
