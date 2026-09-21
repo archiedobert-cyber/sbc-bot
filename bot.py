@@ -300,7 +300,7 @@ def to_embed(sbc):
 
     if sbc["requirements"]:
         description += (
-            "\n\n## 🧩 Requirements\n"
+            "\n\n### 🧩 Requirements\n"
             + "\n".join(sbc["requirements"])
         )
 
