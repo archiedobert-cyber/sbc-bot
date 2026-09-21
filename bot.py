@@ -42,11 +42,11 @@ HEADER = "## 🚨🆕 **NEW SBC ALERT** 🆕🚨"
 
 # Message posted at the very bottom, after all the SBC cards.
 # Edit the text/emojis/link however you like, or set it to "" for no footer.
-FOOTER = "👀 Don't miss out - see every SBC here: https://www.fut.gg/sbc/"
+FOOTER = ""
 
 # Role to ping in the footer (pings once per post). Paste the role's ID - numbers
 # only, e.g. "123456789012345678" - or leave as "" for no ping.
-PING_ROLE_ID = ""
+PING_ROLE_ID = "1551540516238131270"
 
 
 def get(url):
