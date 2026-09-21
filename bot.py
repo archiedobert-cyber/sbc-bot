@@ -10,7 +10,6 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -242,71 +241,21 @@ def page_text(page):
     return str(page).replace('\\"', '"')
 
 
-def find_expiry(page):
-    """Return the SBC's expiry as a UTC datetime, or None."""
-    html = page_text(page)
-    pattern = (
-        r'"(?:expiresAt|expirationDate|expiryDate|expiry|expires|endsAt|endDate)"'
-        r'\s*:\s*"?([^",}\]]+)"?'
-    )
-    for m in re.finditer(pattern, html):
-        value = m.group(1).strip()
-        try:
-            if value.isdigit():  # unix timestamp (seconds or milliseconds)
-                ts = int(value)
-                return datetime.fromtimestamp(
-                    ts / 1000 if ts > 10**11 else ts, timezone.utc
-                )
-            expiry = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            if expiry.tzinfo is None:
-                expiry = expiry.replace(tzinfo=timezone.utc)
-            return expiry
-        except (ValueError, OverflowError, OSError):
-            continue
-    return None
-
-
-def time_left(expiry):
-    secs = int((expiry - datetime.now(timezone.utc)).total_seconds())
-    if secs <= 0:
-        return "Expired"
-
-    days, rem = divmod(secs, 86400)
-    hours, rem = divmod(rem, 3600)
-    mins = rem // 60
-
-    parts = []
-    if days:
-        parts.append(f"{days} day{'s' if days != 1 else ''}")
-    if hours:
-        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
-    if mins and not days:
-        parts.append(f"{mins} min{'s' if mins != 1 else ''}")
-
-    return " ".join(parts) or "Less than a minute"
+def find_expires_in(page):
+    """fut.gg's own 'expires in' text (e.g. '6 days'), or '' if it isn't there."""
+    m = re.search(r'expiresIn:"([^"]+)"', page_text(page))
+    return m.group(1).strip() if m else ""
 
 
 def find_repeatable(page):
-    """Return e.g. '5x', or '' if the SBC isn't repeatable / can't be found."""
+    """How many times the SBC can be repeated (e.g. '3x'), or '' if not repeatable."""
     html = page_text(page)
-    pattern = (
-        r'"(?:repeatable|repeatableCount|repeatCount|repeats|maxRepeats|repetitions)"'
-        r'\s*:\s*(\d+)'
-    )
-    m = re.search(pattern, html)
-    return f"{m.group(1)}x" if m else ""
-
-
-def debug_page(page):
-    """Print the text around 'expire' / 'repeat' so the real field names can be found."""
-    html = page_text(page)
-    for word in ("expire", "repeat"):
-        for i, m in enumerate(re.finditer(word, html, re.I)):
-            if i >= 6:
-                break
-            start = max(0, m.start() - 60)
-            snippet = html[start:m.end() + 80].replace("\n", " ")
-            print(f"DEBUG {word} -> {snippet}")
+    if "isRepeatable:!1" in html:
+        return ""
+    m = re.search(r"numberOfRepeats:(\d+)", html)
+    if m and int(m.group(1)) > 0:
+        return f"{m.group(1)}x"
+    return ""
 
 
 def to_embed(sbc):
@@ -374,14 +323,8 @@ def find_new_sbcs(html):
             page = None
 
         requirements = find_requirements(page) if page else []
-        expiry = find_expiry(page) if page else None
+        expires = find_expires_in(page) if page else ""
         repeatable = find_repeatable(page) if page else ""
-
-        # If either value is missing, print the raw text around "expire" and
-        # "repeat" so the correct field names can be found in the logs.
-        if page and (expiry is None or not repeatable):
-            print(f"DEBUG: expiry/repeatable not found for {url}")
-            debug_page(page)
 
         new.append(
             {
@@ -390,7 +333,7 @@ def find_new_sbcs(html):
                 "description": find_description(anchors, title),
                 "rewards": find_rewards(card),
                 "requirements": requirements,
-                "expires": time_left(expiry) if expiry else "",
+                "expires": expires,
                 "repeatable": repeatable,
                 "image": find_image(card, url, page),
             }
