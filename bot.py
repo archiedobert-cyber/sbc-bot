@@ -38,7 +38,7 @@ NEW_BADGE = re.compile(r"^\s*new\s*$", re.I)
 GENERIC_OG_IMAGE = "fut-social"  # the site-wide fallback image, not SBC-specific
 
 # Title line shown above the SBC cards - edit the text/emojis however you like
-HEADER = "## 🚨🆕 **NEW SBC ALERT** 🆕🚨"
+HEADER = "# 🚨🆕 **NEW SBC ALERT** 🆕🚨"
 
 # Message posted at the very bottom, after all the SBC cards.
 # Edit the text/emojis/link however you like, or set it to "" for no footer.
@@ -296,19 +296,25 @@ def find_image(card, url):
     return None
 
 def to_embed(sbc):
-    description = sbc["description"]
+    description = f"## {sbc['title']}"
+
+    if sbc["description"]:
+        description += "\n\n" + sbc["description"]
 
     if sbc["requirements"]:
         description += (
-            "\n\n### 🧩 Requirements\n"
+            "\n\n## 🧩 Requirements\n"
             + "\n".join(sbc["requirements"])
         )
 
     if sbc["rewards"]:
-        description += "\n\n**Rewards:** " + ", ".join(sbc["rewards"])
+        description += (
+            "\n\n## 🎁 Rewards\n"
+            + "\n".join(sbc["rewards"])
+        )
 
     embed = {
-        "title": f"🆕 {sbc['title']}"[:256],
+        "title": sbc["title"][:256],
         "url": sbc["url"],
         "description": description.strip()[:4000],
         "color": 0x2ECC71,
@@ -320,7 +326,6 @@ def to_embed(sbc):
         }
 
     return embed
-
 
 def find_requirements(page):
     """Extract SBC requirements while keeping their original wording."""
