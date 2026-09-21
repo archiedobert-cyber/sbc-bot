@@ -282,10 +282,10 @@ def to_embed(sbc):
         )
 
     if sbc["repeatable"]:
-        description += f"\n\n## 🔁 Repeatable\n{sbc['repeatable']}"
+        description += f"\n\n### 🔁 Repeatable\n{sbc['repeatable']}"
 
     if sbc["expires"]:
-        description += f"\n\n## ⏰ Available for\n{sbc['expires']}"
+        description += f"\n\n### ⏰ Available for\n{sbc['expires']}"
 
     embed = {
         "description": description.strip()[:4000],
