@@ -327,6 +327,7 @@ def to_embed(sbc):
 
 print("DEBUG EMBED:")
 print(json.dumps(embed, indent=2, ensure_ascii=False))
+
 return embed
 
 def find_requirements(page):
