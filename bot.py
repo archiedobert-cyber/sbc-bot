@@ -93,20 +93,167 @@ def find_rewards(card):
 
 
 def find_image(card, url):
-    # 1) an image on the card itself (ignoring pack/coin icons)
+    """Find an SBC-specific image using several possible sources."""
+
+    def is_generic(src):
+        if not src:
+            return True
+
+        src = src.lower()
+
+        return (
+            "fut-social" in src
+            or "favicon" in src
+            or "logo" in src
+            or "placeholder" in src
+            or "default-image" in src
+        )
+
+    def clean(src):
+        if not src or src.startswith("data:"):
+            return None
+
+        src = urljoin(BASE, src.strip())
+
+        if is_generic(src):
+            return None
+
+        return src
+
+    # 1) Images directly on the SBC card
     for img in card.find_all("img"):
-        src = img.get("src") or img.get("data-src") or ""
-        if src and "public-assets" not in src:
-            return urljoin(BASE, src)
-    # 2) the SBC page's own preview image
+        for attr in (
+            "src",
+            "data-src",
+            "data-original",
+            "data-lazy-src",
+            "data-lazy",
+            "data-image",
+            "data-url",
+        ):
+            image = clean(img.get(attr))
+            if image:
+                return image
+
+        # Check lazy-loaded srcset
+        srcset = img.get("srcset") or img.get("data-srcset")
+        if srcset:
+            for item in srcset.split(","):
+                image = clean(item.strip().split()[0])
+                if image:
+                    return image
+
+    # 2) Fetch the SBC page once and check its metadata
     try:
         page = BeautifulSoup(get(url), "html.parser")
-        og = page.find("meta", attrs={"property": "og:image"})
-        if og and og.get("content") and GENERIC_OG_IMAGE not in og["content"]:
-            return og["content"]
-    except requests.RequestException:
-        pass
+
+        # Open Graph
+        for prop in ("og:image", "og:image:url"):
+            meta = page.find("meta", attrs={"property": prop})
+
+            if meta:
+                image = clean(meta.get("content"))
+                if image:
+                    return image
+
+        # Twitter/X image
+        for name in ("twitter:image", "twitter:image:src"):
+            meta = page.find("meta", attrs={"name": name})
+
+            if meta:
+                image = clean(meta.get("content"))
+                if image:
+                    return image
+
+        # 3) Check every image on the SBC page
+        for img in page.find_all("img"):
+            for attr in (
+                "src",
+                "data-src",
+                "data-original",
+                "data-lazy-src",
+                "data-lazy",
+                "data-image",
+                "data-url",
+            ):
+                image = clean(img.get(attr))
+
+                if image:
+                    return image
+
+            srcset = img.get("srcset") or img.get("data-srcset")
+
+            if srcset:
+                for item in srcset.split(","):
+                    image = clean(item.strip().split()[0])
+
+                    if image:
+                        return image
+
+    except requests.RequestException as e:
+        print(f"Could not fetch SBC page for image: {e}")
+
     return None
+```
+
+```python
+def find_requirements(page):
+    """Extract SBC requirements while keeping their original wording."""
+
+    requirements = []
+
+    # Look at individual visible elements first.
+    for element in page.find_all(["li", "p", "div", "span", "td"]):
+        text = element.get_text(" ", strip=True)
+
+        if not text or len(text) > 180:
+            continue
+
+        lower = text.lower()
+
+        if any(term in lower for term in (
+            "min.",
+            "minimum",
+            "max.",
+            "maximum",
+            "players from",
+            "squad rating",
+            "team chemistry",
+            "number of players",
+            "overall rating",
+            "rating:",
+            "chemistry:",
+            "league:",
+            "club:",
+            "nation:",
+            "country:",
+            "position:",
+            "positions:",
+            "rare players",
+            "gold players",
+            "silver players",
+            "bronze players",
+        )):
+            text = re.sub(r"\s+", " ", text).strip()
+
+            if text not in requirements:
+                requirements.append(text)
+
+    # Remove duplicate entries caused by nested HTML elements.
+    cleaned = []
+
+    for requirement in requirements:
+        if any(
+            requirement != other
+            and requirement in other
+            for other in requirements
+        ):
+            continue
+
+        cleaned.append(requirement)
+
+    return cleaned
+```
 
 
 def find_new_sbcs(html):
@@ -123,24 +270,50 @@ def find_new_sbcs(html):
     for url, anchors in groups.items():
         if not any(a.find(string=NEW_BADGE) for a in anchors):
             continue
+        ```python
         title = clean_title(anchors) or url.rstrip("/").split("/")[-1]
         card = card_container(anchors[0])
+
+        # Fetch the SBC page once so we can use it for both
+        # requirements and image detection.
+        try:
+            page = BeautifulSoup(get(url), "html.parser")
+        except requests.RequestException as e:
+            print(f"Could not fetch SBC page {url}: {e}")
+            page = None
+
+        requirements = find_requirements(page) if page else []
+
         new.append(
             {
                 "url": url,
                 "title": title,
                 "description": find_description(anchors, title),
                 "rewards": find_rewards(card),
+                "requirements": requirements,
                 "image": find_image(card, url),
             }
         )
+```
+
     return new
 
 
 def to_embed(sbc):
+```python
+def to_embed(sbc):
     description = sbc["description"]
+
+    if sbc["requirements"]:
+        description += (
+            "\n\n**Requirements:**\n"
+            + "\n".join(sbc["requirements"])
+        )
+
     if sbc["rewards"]:
         description += "\n\n**Rewards:** " + ", ".join(sbc["rewards"])
+```
+
     embed = {
         "title": f"🆕 {sbc['title']}"[:256],
         "url": sbc["url"],
