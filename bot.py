@@ -457,6 +457,11 @@ def find_new_sbcs(html):
         # requirements and image detection.
         try:
             page = BeautifulSoup(get(url), "html.parser")
+          def debug_page(page):
+    html = str(page).replace('\\"', '"')
+    for word in ("expire", "repeat"):
+        for m in re.finditer(word, html, re.I):
+            print(word, "->", html[max(0, m.start() - 60): m.end() + 80].replace("\n", " "))
         except requests.RequestException as e:
             print(f"Could not fetch SBC page {url}: {e}")
             page = None
