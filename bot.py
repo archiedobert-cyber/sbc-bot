@@ -303,13 +303,13 @@ def to_embed(sbc):
 
     if sbc["requirements"]:
         description += (
-            "\n\n### 🧩 Requirements\n"
+            "\n\n## 🧩 Requirements\n"
             + "\n".join(sbc["requirements"])
         )
 
     if sbc["rewards"]:
         description += (
-            "\n\n### 🎁 Rewards\n"
+            "\n\n## 🎁 Rewards\n"
             + "\n".join(sbc["rewards"])
         )
 
@@ -325,7 +325,9 @@ def to_embed(sbc):
             "url": sbc["image"]
         }
 
-    return embed
+print("DEBUG EMBED:")
+print(json.dumps(embed, indent=2, ensure_ascii=False))
+return embed
 
 def find_requirements(page):
     """Extract SBC requirements while keeping their original wording."""
