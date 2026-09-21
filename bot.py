@@ -1,15 +1,16 @@
-from datetime import datetime, timezone
 """Posts SBCs labelled "New" on fut.gg/sbc to a Discord channel via webhook.
 
 Env vars:
   DISCORD_WEBHOOK_URL  webhook to post to (GitHub secret)
   DRY_RUN=1            print what would be posted instead of sending it
+  TEST_MODE=1          post every current "New" SBC, even if already posted
 """
 import json
 import os
 import re
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -21,7 +22,7 @@ LIST_URL = f"{BASE}/sbc/"
 STATE_FILE = Path("posted.json")  # remembers what's already been posted
 WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL")
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
-TEST_MODE = os.environ.get("TEST_MODE") == "1"  # post every current "New" SBC, even if already posted
+TEST_MODE = os.environ.get("TEST_MODE") == "1"
 
 HEADERS = {
     "User-Agent": (
@@ -36,7 +37,6 @@ SBC_HREF = re.compile(
 )
 # The badge must be exactly "New" (so a title like "Newcastle Special" won't match)
 NEW_BADGE = re.compile(r"^\s*new\s*$", re.I)
-GENERIC_OG_IMAGE = "fut-social"  # the site-wide fallback image, not SBC-specific
 
 # Title line shown above the SBC cards - edit the text/emojis however you like
 HEADER = "# 🚨🆕 **NEW SBC ALERT** 🆕🚨"
@@ -93,15 +93,22 @@ def find_rewards(card):
     return rewards
 
 
+IMAGE_ATTRS = (
+    "src",
+    "data-src",
+    "data-original",
+    "data-lazy-src",
+    "data-lazy",
+    "data-image",
+    "data-url",
+)
+
+
 def find_image(card, url):
     """Find an SBC-specific image using several possible sources."""
 
     def is_generic(src):
-        if not src:
-            return True
-
         src = src.lower()
-
         return (
             "fut-social" in src
             or "favicon" in src
@@ -113,45 +120,42 @@ def find_image(card, url):
     def clean(src):
         if not src or src.startswith("data:"):
             return None
-
         src = urljoin(BASE, src.strip())
-
         if is_generic(src):
             return None
-
         return src
 
-    # 1) Images directly on the SBC card
-    for img in card.find_all("img"):
-        for attr in (
-            "src",
-            "data-src",
-            "data-original",
-            "data-lazy-src",
-            "data-lazy",
-            "data-image",
-            "data-url",
-        ):
-            image = clean(img.get(attr))
-            if image:
-                return image
-
-        # Check lazy-loaded srcset
-        srcset = img.get("srcset") or img.get("data-srcset")
-        if srcset:
-            for item in srcset.split(","):
-                image = clean(item.strip().split()[0])
+    def image_from_tags(container):
+        for img in container.find_all("img"):
+            for attr in IMAGE_ATTRS:
+                image = clean(img.get(attr))
                 if image:
                     return image
 
-    # 2) Fetch the SBC page once and check its metadata
+            # Check lazy-loaded srcset
+            srcset = img.get("srcset") or img.get("data-srcset")
+            if srcset:
+                for item in srcset.split(","):
+                    parts = item.strip().split()
+                    if not parts:
+                        continue
+                    image = clean(parts[0])
+                    if image:
+                        return image
+        return None
+
+    # 1) Images directly on the SBC card
+    image = image_from_tags(card)
+    if image:
+        return image
+
+    # 2) Fetch the SBC page and check its metadata
     try:
         page = BeautifulSoup(get(url), "html.parser")
 
         # Open Graph
         for prop in ("og:image", "og:image:url"):
             meta = page.find("meta", attrs={"property": prop})
-
             if meta:
                 image = clean(meta.get("content"))
                 if image:
@@ -160,226 +164,24 @@ def find_image(card, url):
         # Twitter/X image
         for name in ("twitter:image", "twitter:image:src"):
             meta = page.find("meta", attrs={"name": name})
-
             if meta:
                 image = clean(meta.get("content"))
                 if image:
                     return image
 
         # 3) Check every image on the SBC page
-        for img in page.find_all("img"):
-            for attr in (
-                "src",
-                "data-src",
-                "data-original",
-                "data-lazy-src",
-                "data-lazy",
-                "data-image",
-                "data-url",
-            ):
-                image = clean(img.get(attr))
-
-                if image:
-                    return image
-
-            srcset = img.get("srcset") or img.get("data-srcset")
-
-            if srcset:
-                for item in srcset.split(","):
-                    image = clean(item.strip().split()[0])
-
-                    if image:
-                        return image
+        image = image_from_tags(page)
+        if image:
+            return image
 
     except requests.RequestException as e:
         print(f"Could not fetch SBC page for image: {e}")
 
     return None
 
-    def is_generic(src):
-        if not src:
-            return True
-
-        src = src.lower()
-
-        return (
-            "fut-social" in src
-            or "favicon" in src
-            or "logo" in src
-            or "placeholder" in src
-            or "default-image" in src
-        )
-
-    def clean(src):
-        if not src or src.startswith("data:"):
-            return None
-
-        src = urljoin(BASE, src.strip())
-
-        if is_generic(src):
-            return None
-
-        return src
-
-    # 1) Images directly on the SBC card
-    for img in card.find_all("img"):
-        for attr in (
-            "src",
-            "data-src",
-            "data-original",
-            "data-lazy-src",
-            "data-lazy",
-            "data-image",
-            "data-url",
-        ):
-            image = clean(img.get(attr))
-            if image:
-                return image
-
-        # Check lazy-loaded srcset
-        srcset = img.get("srcset") or img.get("data-srcset")
-        if srcset:
-            for item in srcset.split(","):
-                image = clean(item.strip().split()[0])
-                if image:
-                    return image
-
-    # 2) Fetch the SBC page once and check its metadata
-    try:
-        page = BeautifulSoup(get(url), "html.parser")
-
-        # Open Graph
-        for prop in ("og:image", "og:image:url"):
-            meta = page.find("meta", attrs={"property": prop})
-
-            if meta:
-                image = clean(meta.get("content"))
-                if image:
-                    return image
-
-        # Twitter/X image
-        for name in ("twitter:image", "twitter:image:src"):
-            meta = page.find("meta", attrs={"name": name})
-
-            if meta:
-                image = clean(meta.get("content"))
-                if image:
-                    return image
-
-        # 3) Check every image on the SBC page
-        for img in page.find_all("img"):
-            for attr in (
-                "src",
-                "data-src",
-                "data-original",
-                "data-lazy-src",
-                "data-lazy",
-                "data-image",
-                "data-url",
-            ):
-                image = clean(img.get(attr))
-
-                if image:
-                    return image
-
-            srcset = img.get("srcset") or img.get("data-srcset")
-
-            if srcset:
-                for item in srcset.split(","):
-                    image = clean(item.strip().split()[0])
-
-                    if image:
-                        return image
-
-    except requests.RequestException as e:
-        print(f"Could not fetch SBC page for image: {e}")
-
-    return None
-  
-def find_expiry(page):
-    """Return the SBC's expiry as a UTC datetime, or None."""
-    html = str(page).replace('\\"', '"')  # un-escape JSON embedded in the page
-    m = re.search(
-        r'"(?:expiresAt|expirationDate|expiryDate|expiry|expires|endsAt|endDate)"\s*:\s*"?([^",}]+)"?',
-        html,
-    )
-    if not m:
-        return None
-    value = m.group(1).strip()
-    try:
-        if value.isdigit():  # unix timestamp (seconds or milliseconds)
-            ts = int(value)
-            return datetime.fromtimestamp(ts / 1000 if ts > 10**11 else ts, timezone.utc)
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
-def time_left(expiry):
-    secs = int((expiry - datetime.now(timezone.utc)).total_seconds())
-    if secs <= 0:
-        return "Expired"
-    days, rem = divmod(secs, 86400)
-    hours, rem = divmod(rem, 3600)
-    mins = rem // 60
-    parts = []
-    if days:
-        parts.append(f"{days} day{'s' if days != 1 else ''}")
-    if hours:
-        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
-    if mins and not days:
-        parts.append(f"{mins} min{'s' if mins != 1 else ''}")
-    return " ".join(parts) or "Less than a minute"
-
-
-def find_repeatable(page):
-    """Return e.g. '5x', or '' if the SBC isn't repeatable / can't be found."""
-    html = str(page).replace('\\"', '"')
-    m = re.search(
-        r'"(?:repeatable|repeatableCount|repeatCount|repeats|maxRepeats|repetitions)"\s*:\s*(\d+)',
-        html,
-    )
-    return f"{m.group(1)}x" if m else ""
-
-
-def to_embed(sbc):
-    description = f"## 🆕 {sbc['title']}\n[More details]({sbc['url']})"
-
-    if sbc["description"]:
-        description += "\n\n" + sbc["description"]
-
-    if sbc["expires"]:
-        description += f"\n\n## ⏰ Available for\n{sbc['expires']}"
-
-    if sbc["requirements"]:
-        description += (
-            "\n\n## 🧩 Requirements\n"
-            + "\n".join(sbc["requirements"])
-        )
-
-    if sbc["rewards"]:
-        description += (
-            "\n\n## 🎁 Rewards\n"
-            + "\n".join(sbc["rewards"])
-        )
-
-    if sbc["repeatable"]:
-        description += f"\n\n## 🔁 Repeatable\n{sbc['repeatable']}"
-  
-
-    if sbc["image"]:
-        embed["image"] = {
-            "url": sbc["image"]
-        }
-
-    print("DEBUG EMBED:")
-    print(json.dumps(embed, indent=2, ensure_ascii=False))
-
-    return embed
 
 def find_requirements(page):
     """Extract SBC requirements while keeping their original wording."""
-
     requirements = []
 
     # Look at individual visible elements first.
@@ -424,8 +226,7 @@ def find_requirements(page):
 
     for requirement in requirements:
         if any(
-            requirement != other
-            and requirement in other
+            requirement != other and requirement in other
             for other in requirements
         ):
             continue
@@ -433,7 +234,117 @@ def find_requirements(page):
         cleaned.append(requirement)
 
     return cleaned
-  
+
+
+def page_text(page):
+    """Raw page HTML with escaped JSON quotes un-escaped, for regex searching."""
+    return str(page).replace('\\"', '"')
+
+
+def find_expiry(page):
+    """Return the SBC's expiry as a UTC datetime, or None."""
+    html = page_text(page)
+    pattern = (
+        r'"(?:expiresAt|expirationDate|expiryDate|expiry|expires|endsAt|endDate)"'
+        r'\s*:\s*"?([^",}\]]+)"?'
+    )
+    for m in re.finditer(pattern, html):
+        value = m.group(1).strip()
+        try:
+            if value.isdigit():  # unix timestamp (seconds or milliseconds)
+                ts = int(value)
+                return datetime.fromtimestamp(
+                    ts / 1000 if ts > 10**11 else ts, timezone.utc
+                )
+            expiry = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=timezone.utc)
+            return expiry
+        except (ValueError, OverflowError, OSError):
+            continue
+    return None
+
+
+def time_left(expiry):
+    secs = int((expiry - datetime.now(timezone.utc)).total_seconds())
+    if secs <= 0:
+        return "Expired"
+
+    days, rem = divmod(secs, 86400)
+    hours, rem = divmod(rem, 3600)
+    mins = rem // 60
+
+    parts = []
+    if days:
+        parts.append(f"{days} day{'s' if days != 1 else ''}")
+    if hours:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    if mins and not days:
+        parts.append(f"{mins} min{'s' if mins != 1 else ''}")
+
+    return " ".join(parts) or "Less than a minute"
+
+
+def find_repeatable(page):
+    """Return e.g. '5x', or '' if the SBC isn't repeatable / can't be found."""
+    html = page_text(page)
+    pattern = (
+        r'"(?:repeatable|repeatableCount|repeatCount|repeats|maxRepeats|repetitions)"'
+        r'\s*:\s*(\d+)'
+    )
+    m = re.search(pattern, html)
+    return f"{m.group(1)}x" if m else ""
+
+
+def debug_page(page):
+    """Print the text around 'expire' / 'repeat' so the real field names can be found."""
+    html = page_text(page)
+    for word in ("expire", "repeat"):
+        for i, m in enumerate(re.finditer(word, html, re.I)):
+            if i >= 6:
+                break
+            start = max(0, m.start() - 60)
+            snippet = html[start:m.end() + 80].replace("\n", " ")
+            print(f"DEBUG {word} -> {snippet}")
+
+
+def to_embed(sbc):
+    description = f"## 🆕 {sbc['title']}\n[More details]({sbc['url']})"
+
+    if sbc["description"]:
+        description += "\n\n" + sbc["description"]
+
+    if sbc["expires"]:
+        description += f"\n\n## ⏰ Available for\n{sbc['expires']}"
+
+    if sbc["requirements"]:
+        description += (
+            "\n\n## 🧩 Requirements\n"
+            + "\n".join(sbc["requirements"])
+        )
+
+    if sbc["rewards"]:
+        description += (
+            "\n\n## 🎁 Rewards\n"
+            + "\n".join(sbc["rewards"])
+        )
+
+    if sbc["repeatable"]:
+        description += f"\n\n## 🔁 Repeatable\n{sbc['repeatable']}"
+
+    embed = {
+        "description": description.strip()[:4000],
+        "color": 0x2ECC71,
+    }
+
+    if sbc["image"]:
+        embed["image"] = {"url": sbc["image"]}
+
+    print("DEBUG EMBED:")
+    print(json.dumps(embed, indent=2, ensure_ascii=False))
+
+    return embed
+
 
 def find_new_sbcs(html):
     soup = BeautifulSoup(html, "html.parser")
@@ -449,24 +360,43 @@ def find_new_sbcs(html):
     for url, anchors in groups.items():
         if not any(a.find(string=NEW_BADGE) for a in anchors):
             continue
- 
+
         title = clean_title(anchors) or url.rstrip("/").split("/")[-1]
         card = card_container(anchors[0])
 
-        # Fetch the SBC page once so we can use it for both
-        # requirements and image detection.
+        # Fetch the SBC page once so we can use it for requirements,
+        # expiry and repeat count.
         try:
             page = BeautifulSoup(get(url), "html.parser")
-          
-      requirements = find_requirements(page) if page else []
-        if page:
+        except requests.RequestException as e:
+            print(f"Could not fetch SBC page {url}: {e}")
+            page = None
+
+        requirements = find_requirements(page) if page else []
+        expiry = find_expiry(page) if page else None
+        repeatable = find_repeatable(page) if page else ""
+
+        # If either value is missing, print the raw text around "expire" and
+        # "repeat" so the correct field names can be found in the logs.
+        if page and (expiry is None or not repeatable):
+            print(f"DEBUG: expiry/repeatable not found for {url}")
             debug_page(page)
 
-def debug_page(page):
-    html = str(page).replace('\\"', '"')
-    for word in ("expire", "repeat"):
-        for m in re.finditer(word, html, re.I):
-            print(word, "->", html[max(0, m.start() - 60): m.end() + 80].replace("\n", " "))
+        new.append(
+            {
+                "url": url,
+                "title": title,
+                "description": find_description(anchors, title),
+                "rewards": find_rewards(card),
+                "requirements": requirements,
+                "expires": time_left(expiry) if expiry else "",
+                "repeatable": repeatable,
+                "image": find_image(card, url),
+            }
+        )
+
+    return new
+
 
 def post(embeds):
     for i in range(0, len(embeds), 10):  # Discord allows 10 embeds per message
