@@ -279,9 +279,6 @@ def to_embed(sbc):
     if sbc["description"]:
         description += "\n" + sbc["description"]
 
-    if sbc["score"]:
-        description += f"\n## 💎 Score\n{sbc['score']}"
-
     if sbc["requirements"]:
         description += (
             "\n## 🧩 Requirements\n"
@@ -306,7 +303,7 @@ def to_embed(sbc):
     }
 
     if sbc["image"]:
-        embed["image"] = {"url": sbc["image"]}
+        embed["thumbnail"] = {"url": sbc["image"]}
 
     print("DEBUG EMBED:")
     print(json.dumps(embed, indent=2, ensure_ascii=False))
@@ -344,6 +341,8 @@ def find_new_sbcs(html):
         expires = find_expires_in(page) if page else ""
         repeatable = find_repeatable(page) if page else ""
         score = find_score(page) if page else ""
+        if score:
+            requirements.append(f"💎 Score: {score}")
 
         new.append(
             {
