@@ -263,24 +263,14 @@ def find_repeatable(page):
     return ""
 
 
-def find_price(page):
-    """Coin cost shown on fut.gg (e.g. '2,500'), or '' if not found."""
+def find_score(page):
+    """fut.gg's SBC score/points value (the number next to the diamond icon on
+    the site), e.g. '2,500', or '' if not found."""
     html = page_text(page)
-    m = re.search(r'(?:price|cost|smartPrice|solutionPrice):(\d+)', html)
+    m = re.search(r'scoreRequirement:(\d+)', html)
     if m:
         return f"{int(m.group(1)):,}"
     return ""
-
-
-def debug_price(page):
-    """Print text around 'price'/'cost' so the real field name can be found."""
-    html = page_text(page)
-    for word in ("price", "cost"):
-        for i, m in enumerate(re.finditer(word, html, re.I)):
-            if i >= 6:
-                break
-            start = max(0, m.start() - 60)
-            print(f"DEBUG {word} -> {html[start:m.end() + 80]}".replace("\n", " "))
 
 
 def to_embed(sbc):
@@ -289,8 +279,8 @@ def to_embed(sbc):
     if sbc["description"]:
         description += "\n" + sbc["description"]
 
-    if sbc["price"]:
-        description += f"\n## 💰 Price\n{sbc['price']} coins"
+    if sbc["score"]:
+        description += f"\n## 💎 Score\n{sbc['score']}"
 
     if sbc["requirements"]:
         description += (
@@ -353,11 +343,7 @@ def find_new_sbcs(html):
         requirements = find_requirements(page) if page else []
         expires = find_expires_in(page) if page else ""
         repeatable = find_repeatable(page) if page else ""
-        price = find_price(page) if page else ""
-
-        if page and not price:
-            print(f"DEBUG: price not found for {url}")
-            debug_price(page)
+        score = find_score(page) if page else ""
 
         new.append(
             {
@@ -368,7 +354,7 @@ def find_new_sbcs(html):
                 "requirements": requirements,
                 "expires": expires,
                 "repeatable": repeatable,
-                "price": price,
+                "score": score,
                 "image": find_image(card, url, page),
             }
         )
