@@ -88,8 +88,15 @@ def find_rewards(card):
     """Reward lines (packs/coins) sit outside the links inside the card."""
     rewards = []
     for s in card.find_all(string=True):
+        if s.find_parent(("script", "style")):
+            continue  # never scan embedded JS/CSS - it isn't visible reward text
         text = s.strip()
-        if text and not s.find_parent("a") and re.search(r"pack|coins|pick|boost", text, re.I):
+        if (
+            text
+            and len(text) <= 150
+            and not s.find_parent("a")
+            and re.search(r"pack|coins|pick|boost", text, re.I)
+        ):
             rewards.append(text)
 
     # Drop description sentences (e.g. "Earn a pack containing 2 Gold Player
@@ -97,6 +104,24 @@ def find_rewards(card):
     # leave nothing, keep everything rather than post an empty section.
     names = [r for r in rewards if not r.lower().startswith("earn ") and not r.endswith(".")]
     return names or rewards
+
+
+def find_player_award(page):
+    """If the SBC's reward is a player card, return 'Name - OVR - Rarity'."""
+    m = re.search(
+        r'overall:(\d+),commonName:"([^"]+)",cardName:"[^"]+",rarityName:"([^"]+)"',
+        page_text(page),
+    )
+    if not m:
+        return None
+    ovr, name, rarity = m.groups()
+    return f"{name} - {ovr} - {rarity}"
+
+
+def find_player_card_image(page):
+    """The actual player card artwork, when the SBC's reward is a player."""
+    m = re.search(r'cardImageUrl:"([^"]+)"', page_text(page))
+    return m.group(1).replace("\\/", "/") if m else None
 
 
 IMAGE_ATTRS = (
@@ -112,6 +137,13 @@ IMAGE_ATTRS = (
 
 def find_image(card, url, page=None):
     """Find an SBC-specific image, preferring fut.gg's own SBC artwork."""
+
+    # A player-card reward has its own artwork - use that in preference to
+    # any generic SBC icon/thumbnail if we can find it.
+    if page is not None:
+        player_image = find_player_card_image(page)
+        if player_image:
+            return player_image
 
     def is_generic(src):
         src = src.lower()
@@ -351,7 +383,7 @@ def find_new_sbcs(html):
                 "url": url,
                 "title": title,
                 "description": find_description(anchors, title),
-                "rewards": find_rewards(card),
+                "rewards": find_rewards(card) or ([find_player_award(page)] if page and find_player_award(page) else []),
                 "requirements": requirements,
                 "expires": expires,
                 "repeatable": repeatable,
@@ -397,7 +429,7 @@ def build_sbc(url, page):
         "url": url,
         "title": title,
         "description": "",
-        "rewards": find_rewards(page),
+        "rewards": find_rewards(page) or ([find_player_award(page)] if find_player_award(page) else []),
         "requirements": requirements,
         "expires": find_expires_in(page),
         "repeatable": find_repeatable(page),
