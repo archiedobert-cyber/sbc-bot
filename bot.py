@@ -103,7 +103,8 @@ def find_rewards(card):
     # Items, rated 79 or higher.") and keep just the reward names. If that would
     # leave nothing, keep everything rather than post an empty section.
     names = [r for r in rewards if not r.lower().startswith("earn ") and not r.endswith(".")]
-    return names or rewards
+    result = names or rewards
+    return list(dict.fromkeys(result))  # same reward can appear more than once on the page
 
 
 def find_player_award(page):
@@ -275,6 +276,25 @@ def find_requirements(page):
     return dedupe(collect(page.find_all(["p", "div", "span", "td"])))
 
 
+RESERVED_HEADINGS = {"requirements", "eligible players", "rewards", "reward"}
+
+
+def find_challenge_names(page, title):
+    """If the SBC has multiple challenge segments (e.g. Marquee Matchups' "Celtic
+    v Rangers", "FC Porto v SL Benfica", ...), return their names in order.
+    Returns [] for an ordinary single-segment SBC."""
+    names = []
+    for tag in page.find_all(["h2", "h3", "h4", "h5", "h6"]):
+        text = tag.get_text(" ", strip=True)
+        if not text or text.lower() in RESERVED_HEADINGS:
+            continue
+        if title and text.strip().lower() == title.strip().lower():
+            continue
+        if text not in names:
+            names.append(text)
+    return names if len(names) > 1 else []
+
+
 def page_text(page):
     """Raw page HTML with escaped JSON quotes un-escaped, for regex searching."""
     return str(page).replace('\\"', '"')
@@ -374,12 +394,13 @@ def find_new_sbcs(html):
             print(f"Could not fetch SBC page {url}: {e}")
             page = None
 
-        requirements = find_requirements(page) if page else []
+        challenge_names = find_challenge_names(page, title) if page else []
+        requirements = challenge_names or (find_requirements(page) if page else [])
         expires = find_expires_in(page) if page else ""
         repeatable = find_repeatable(page) if page else ""
         score = find_score(page) if page else ""
         if score:
-            requirements.append(f"💎 Score: {score}")
+            requirements.insert(0, f"💎 Score: {score}")
 
         new.append(
             {
@@ -424,10 +445,11 @@ def build_sbc(url, page):
     title = title_tag.get_text(" ", strip=True) if title_tag else url.rstrip("/").split("/")[-1]
     title = re.sub(r"\s*-\s*EA SPORTS FC.*$", "", title).strip()
 
-    requirements = find_requirements(page)
+    challenge_names = find_challenge_names(page, title)
+    requirements = challenge_names or find_requirements(page)
     score = find_score(page)
     if score:
-        requirements.append(f"💎 Score: {score}")
+        requirements.insert(0, f"💎 Score: {score}")
 
     return {
         "url": url,
