@@ -337,7 +337,10 @@ def to_embed(sbc):
     }
 
     if sbc["image"]:
-        embed["thumbnail"] = {"url": sbc["image"]}
+        # Player-card rewards get the bigger, full-width "image" slot; every
+        # other SBC gets the smaller "thumbnail" slot instead.
+        key = "image" if sbc.get("is_player_reward") else "thumbnail"
+        embed[key] = {"url": sbc["image"]}
 
     print("DEBUG EMBED:")
     print(json.dumps(embed, indent=2, ensure_ascii=False))
@@ -389,6 +392,7 @@ def find_new_sbcs(html):
                 "repeatable": repeatable,
                 "score": score,
                 "image": find_image(card, url, page),
+                "is_player_reward": bool(page and find_player_card_image(page)),
             }
         )
 
@@ -435,6 +439,7 @@ def build_sbc(url, page):
         "repeatable": find_repeatable(page),
         "score": score,
         "image": find_image(page, url, page),
+        "is_player_reward": bool(find_player_card_image(page)),
     }
 
 
