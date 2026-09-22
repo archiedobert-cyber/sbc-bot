@@ -4,6 +4,7 @@ Env vars:
   DISCORD_WEBHOOK_URL  webhook to post to (GitHub secret)
   DRY_RUN=1            print what would be posted instead of sending it
   TEST_MODE=1          post every current "New" SBC, even if already posted
+  TEST_URL=<sbc link>  post just this one SBC page, skipping the site scan
 """
 import json
 import os
@@ -22,6 +23,7 @@ STATE_FILE = Path("posted.json")  # remembers what's already been posted
 WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL")
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 TEST_MODE = os.environ.get("TEST_MODE") == "1"
+TEST_URL = os.environ.get("TEST_URL", "").strip()
 
 HEADERS = {
     "User-Agent": (
@@ -380,9 +382,43 @@ def post(embeds):
         r.raise_for_status()
 
 
+def build_sbc(url, page):
+    """Build an sbc dict straight from one SBC page (used by TEST_URL)."""
+    title_tag = page.find("h1") or page.find("title")
+    title = title_tag.get_text(" ", strip=True) if title_tag else url.rstrip("/").split("/")[-1]
+    title = re.sub(r"\s*-\s*EA SPORTS FC.*$", "", title).strip()
+
+    requirements = find_requirements(page)
+    score = find_score(page)
+    if score:
+        requirements.append(f"💎 Score: {score}")
+
+    return {
+        "url": url,
+        "title": title,
+        "description": "",
+        "rewards": find_rewards(page),
+        "requirements": requirements,
+        "expires": find_expires_in(page),
+        "repeatable": find_repeatable(page),
+        "score": score,
+        "image": find_image(page, url, page),
+    }
+
+
 def main():
     if not WEBHOOK and not DRY_RUN:
         sys.exit("DISCORD_WEBHOOK_URL is not set")
+
+    if TEST_URL:
+        print(f"TEST_URL set - posting just this one SBC: {TEST_URL}")
+        page = BeautifulSoup(get(TEST_URL), "html.parser")
+        embed = to_embed(build_sbc(TEST_URL, page))
+        if DRY_RUN:
+            print(json.dumps([embed], indent=2, ensure_ascii=False))
+        else:
+            post([embed])
+        return
 
     posted = set(json.loads(STATE_FILE.read_text())) if STATE_FILE.exists() else set()
     new = [s for s in find_new_sbcs(get(LIST_URL)) if TEST_MODE or s["url"] not in posted]
