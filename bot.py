@@ -263,29 +263,52 @@ def find_repeatable(page):
     return ""
 
 
+def find_price(page):
+    """Coin cost shown on fut.gg (e.g. '2,500'), or '' if not found."""
+    html = page_text(page)
+    m = re.search(r'(?:price|cost|smartPrice|solutionPrice):(\d+)', html)
+    if m:
+        return f"{int(m.group(1)):,}"
+    return ""
+
+
+def debug_price(page):
+    """Print text around 'price'/'cost' so the real field name can be found."""
+    html = page_text(page)
+    for word in ("price", "cost"):
+        for i, m in enumerate(re.finditer(word, html, re.I)):
+            if i >= 6:
+                break
+            start = max(0, m.start() - 60)
+            print(f"DEBUG {word} -> {html[start:m.end() + 80]}".replace("\n", " "))
+
+
 def to_embed(sbc):
     description = f"## 🆕 {sbc['title']}\n[More details]({sbc['url']})"
 
     if sbc["description"]:
         description += "\n" + sbc["description"]
 
+    if sbc["price"]:
+        description += f"\n## 💰 Price\n{sbc['price']} coins"
+
     if sbc["requirements"]:
         description += (
-            "\n### 🧩 Requirements\n"
+            "\n## 🧩 Requirements\n"
             + "\n".join(sbc["requirements"])
         )
 
     if sbc["rewards"]:
         description += (
-            "\n### 🎁 Rewards\n"
+            "\n## 🎁 Rewards\n"
             + "\n".join(sbc["rewards"])
         )
 
     if sbc["repeatable"]:
-        description += f"\n\n **🔁 Repeatable**\n{sbc['repeatable']}"
+        description += f"\n## 🔁 Repeatable\n{sbc['repeatable']}"
 
     if sbc["expires"]:
-        description += f"\n\n **⏰ Available for**\n{sbc['expires']}"
+        description += f"\n## ⏰ Available for\n{sbc['expires']}"
 
     embed = {
         "description": description.strip()[:4000],
@@ -330,6 +353,11 @@ def find_new_sbcs(html):
         requirements = find_requirements(page) if page else []
         expires = find_expires_in(page) if page else ""
         repeatable = find_repeatable(page) if page else ""
+        price = find_price(page) if page else ""
+
+        if page and not price:
+            print(f"DEBUG: price not found for {url}")
+            debug_price(page)
 
         new.append(
             {
@@ -340,6 +368,7 @@ def find_new_sbcs(html):
                 "requirements": requirements,
                 "expires": expires,
                 "repeatable": repeatable,
+                "price": price,
                 "image": find_image(card, url, page),
             }
         )
