@@ -36,7 +36,7 @@ jobs:
       - name: Gate - only continue at 6pm UK (manual runs always continue)
         id: gate
         run: |
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(TZ=Europe/London date +%H)" != "18" ]; then
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(TZ=Europe/London date +%H)" != "18:05" ]; then
             echo "Not 6pm in the UK - skipping"
             echo "go=false" >> "$GITHUB_OUTPUT"
           else
