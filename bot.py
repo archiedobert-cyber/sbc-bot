@@ -3,8 +3,6 @@
 Env vars:
   DISCORD_WEBHOOK_URL  webhook to post to (GitHub secret)
   DRY_RUN=1            print what would be posted instead of sending it
-  TEST_MODE=1          post every current "New" SBC, even if already posted
-  TEST_URL=<sbc link>  post just this one SBC page, skipping the site scan
 """
 import json
 import os
@@ -22,8 +20,7 @@ LIST_URL = f"{BASE}/sbc/"
 STATE_FILE = Path("posted.json")  # remembers what's already been posted
 WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL")
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
-TEST_MODE = os.environ.get("TEST_MODE") == "1"
-TEST_URL = os.environ.get("TEST_URL", "").strip()
+TEST_MODE = os.environ.get("TEST_MODE") == "1"  # post every current "New" SBC, even if already posted
 
 HEADERS = {
     "User-Agent": (
@@ -38,6 +35,7 @@ SBC_HREF = re.compile(
 )
 # The badge must be exactly "New" (so a title like "Newcastle Special" won't match)
 NEW_BADGE = re.compile(r"^\s*new\s*$", re.I)
+GENERIC_OG_IMAGE = "fut-social"  # the site-wide fallback image, not SBC-specific
 
 # Title line shown above the SBC cards - edit the text/emojis however you like
 HEADER = "# 🚨🆕 **NEW SBC ALERT** 🆕🚨"
@@ -88,66 +86,21 @@ def find_rewards(card):
     """Reward lines (packs/coins) sit outside the links inside the card."""
     rewards = []
     for s in card.find_all(string=True):
-        if s.find_parent(("script", "style")):
-            continue  # never scan embedded JS/CSS - it isn't visible reward text
         text = s.strip()
-        if (
-            text
-            and len(text) <= 150
-            and not s.find_parent("a")
-            and re.search(r"pack|coins|pick|boost", text, re.I)
-        ):
+        if text and not s.find_parent("a") and re.search(r"pack|coins|pick|boost", text, re.I):
             rewards.append(text)
-
-    # Drop description sentences (e.g. "Earn a pack containing 2 Gold Player
-    # Items, rated 79 or higher.") and keep just the reward names. If that would
-    # leave nothing, keep everything rather than post an empty section.
-    names = [r for r in rewards if not r.lower().startswith("earn ") and not r.endswith(".")]
-    result = names or rewards
-    return list(dict.fromkeys(result))  # same reward can appear more than once on the page
+    return rewards
 
 
-def find_player_award(page):
-    """If the SBC's reward is a player card, return 'Name - OVR - Rarity'."""
-    m = re.search(
-        r'overall:(\d+),commonName:"([^"]+)",cardName:"[^"]+",rarityName:"([^"]+)"',
-        page_text(page),
-    )
-    if not m:
-        return None
-    ovr, name, rarity = m.groups()
-    return f"{name} - {ovr} - {rarity}"
-
-
-def find_player_card_image(page):
-    """The actual player card artwork, when the SBC's reward is a player."""
-    m = re.search(r'cardImageUrl:"([^"]+)"', page_text(page))
-    return m.group(1).replace("\\/", "/") if m else None
-
-
-IMAGE_ATTRS = (
-    "src",
-    "data-src",
-    "data-original",
-    "data-lazy-src",
-    "data-lazy",
-    "data-image",
-    "data-url",
-)
-
-
-def find_image(card, url, page=None):
-    """Find an SBC-specific image, preferring fut.gg's own SBC artwork."""
-
-    # A player-card reward has its own artwork - use that in preference to
-    # any generic SBC icon/thumbnail if we can find it.
-    if page is not None:
-        player_image = find_player_card_image(page)
-        if player_image:
-            return player_image
+def find_image(card, url):
+    """Find an SBC-specific image using several possible sources."""
 
     def is_generic(src):
+        if not src:
+            return True
+
         src = src.lower()
+
         return (
             "fut-social" in src
             or "favicon" in src
@@ -159,214 +112,271 @@ def find_image(card, url, page=None):
     def clean(src):
         if not src or src.startswith("data:"):
             return None
+
         src = urljoin(BASE, src.strip())
+
         if is_generic(src):
             return None
+
         return src
 
-    def sources(img):
-        """Every image URL an <img> tag might carry (src, lazy-load attrs, srcset)."""
-        for attr in IMAGE_ATTRS:
-            yield img.get(attr)
+    # 1) Images directly on the SBC card
+    for img in card.find_all("img"):
+        for attr in (
+            "src",
+            "data-src",
+            "data-original",
+            "data-lazy-src",
+            "data-lazy",
+            "data-image",
+            "data-url",
+        ):
+            image = clean(img.get(attr))
+            if image:
+                return image
+
+        # Check lazy-loaded srcset
         srcset = img.get("srcset") or img.get("data-srcset")
         if srcset:
             for item in srcset.split(","):
-                parts = item.strip().split()
-                if parts:
-                    yield parts[0]
-
-    def first_image(container, must_contain=None):
-        for img in container.find_all("img"):
-            for src in sources(img):
-                image = clean(src)
-                if image and (must_contain is None or must_contain in image):
+                image = clean(item.strip().split()[0])
+                if image:
                     return image
-        return None
 
-    # 1) fut.gg's own artwork for this SBC (game-assets.fut.gg/.../sbcs/...)
-    image = first_image(card, "/sbcs/")
-    if image:
-        return image
+    # 2) Fetch the SBC page once and check its metadata
+    try:
+        page = BeautifulSoup(get(url), "html.parser")
 
-    if page is None:
-        try:
-            page = BeautifulSoup(get(url), "html.parser")
-        except requests.RequestException as e:
-            print(f"Could not fetch SBC page for image: {e}")
+        # Open Graph
+        for prop in ("og:image", "og:image:url"):
+            meta = page.find("meta", attrs={"property": prop})
 
-    if page is not None:
-        image = first_image(page, "/sbcs/")
-        if image:
-            return image
+            if meta:
+                image = clean(meta.get("content"))
+                if image:
+                    return image
 
-    # 2) Any other image on the card
-    image = first_image(card)
-    if image:
-        return image
+        # Twitter/X image
+        for name in ("twitter:image", "twitter:image:src"):
+            meta = page.find("meta", attrs={"name": name})
 
-    if page is not None:
-        # 3) Page metadata (Open Graph, then Twitter/X)
-        for attr_name, names in (
-            ("property", ("og:image", "og:image:url")),
-            ("name", ("twitter:image", "twitter:image:src")),
-        ):
-            for name in names:
-                meta = page.find("meta", attrs={attr_name: name})
-                if meta:
-                    image = clean(meta.get("content"))
+            if meta:
+                image = clean(meta.get("content"))
+                if image:
+                    return image
+
+        # 3) Check every image on the SBC page
+        for img in page.find_all("img"):
+            for attr in (
+                "src",
+                "data-src",
+                "data-original",
+                "data-lazy-src",
+                "data-lazy",
+                "data-image",
+                "data-url",
+            ):
+                image = clean(img.get(attr))
+
+                if image:
+                    return image
+
+            srcset = img.get("srcset") or img.get("data-srcset")
+
+            if srcset:
+                for item in srcset.split(","):
+                    image = clean(item.strip().split()[0])
+
                     if image:
                         return image
 
-        # 4) Any image on the SBC page
-        return first_image(page)
+    except requests.RequestException as e:
+        print(f"Could not fetch SBC page for image: {e}")
 
     return None
 
+    def is_generic(src):
+        if not src:
+            return True
 
-REQUIREMENT_TERMS = (
-    "min.",
-    "minimum",
-    "max.",
-    "maximum",
-    "players from",
-    "squad rating",
-    "team chemistry",
-    "number of players",
-    "overall rating",
-    "rating:",
-    "chemistry:",
-    "league:",
-    "club:",
-    "nation:",
-    "country:",
-    "position:",
-    "positions:",
-    "rare players",
-    "gold players",
-    "silver players",
-    "bronze players",
-)
+        src = src.lower()
 
+        return (
+            "fut-social" in src
+            or "favicon" in src
+            or "logo" in src
+            or "placeholder" in src
+            or "default-image" in src
+        )
 
-def find_requirements(page):
-    """Extract SBC requirements while keeping their original wording."""
+    def clean(src):
+        if not src or src.startswith("data:"):
+            return None
 
-    def collect(elements):
-        found = []
-        for element in elements:
-            text = element.get_text(" ", strip=True)
-            if not text or len(text) > 180:
-                continue
-            if any(term in text.lower() for term in REQUIREMENT_TERMS):
-                text = re.sub(r"\s+", " ", text).strip()
-                if text not in found:
-                    found.append(text)
-        return found
+        src = urljoin(BASE, src.strip())
 
-    def dedupe(items):
-        # Drop entries that are just part of a longer entry (nested HTML elements).
-        return [r for r in items if not any(r != o and r in o for o in items)]
+        if is_generic(src):
+            return None
 
-    # Requirements are bullet-list items on the SBC page, so try those first.
-    requirements = dedupe(collect(page.find_all("li")))
-    if requirements:
-        return requirements
+        return src
 
-    # Only fall back to broader elements if there are no matching list items.
-    return dedupe(collect(page.find_all(["p", "div", "span", "td"])))
+    # 1) Images directly on the SBC card
+    for img in card.find_all("img"):
+        for attr in (
+            "src",
+            "data-src",
+            "data-original",
+            "data-lazy-src",
+            "data-lazy",
+            "data-image",
+            "data-url",
+        ):
+            image = clean(img.get(attr))
+            if image:
+                return image
 
+        # Check lazy-loaded srcset
+        srcset = img.get("srcset") or img.get("data-srcset")
+        if srcset:
+            for item in srcset.split(","):
+                image = clean(item.strip().split()[0])
+                if image:
+                    return image
 
-RESERVED_HEADINGS = {"requirements", "eligible players", "rewards", "reward"}
+    # 2) Fetch the SBC page once and check its metadata
+    try:
+        page = BeautifulSoup(get(url), "html.parser")
 
+        # Open Graph
+        for prop in ("og:image", "og:image:url"):
+            meta = page.find("meta", attrs={"property": prop})
 
-def find_challenge_names(page, title):
-    """If the SBC has multiple challenge segments (e.g. Marquee Matchups' "Celtic
-    v Rangers", "FC Porto v SL Benfica", ...), return their names in order.
-    Returns [] for an ordinary single-segment SBC."""
-    names = []
-    for tag in page.find_all(["h2", "h3", "h4", "h5", "h6"]):
-        text = tag.get_text(" ", strip=True)
-        if not text or text.lower() in RESERVED_HEADINGS:
-            continue
-        if title and text.strip().lower() == title.strip().lower():
-            continue
-        if text not in names:
-            names.append(text)
-    return names if len(names) > 1 else []
+            if meta:
+                image = clean(meta.get("content"))
+                if image:
+                    return image
 
+        # Twitter/X image
+        for name in ("twitter:image", "twitter:image:src"):
+            meta = page.find("meta", attrs={"name": name})
 
-def page_text(page):
-    """Raw page HTML with escaped JSON quotes un-escaped, for regex searching."""
-    return str(page).replace('\\"', '"')
+            if meta:
+                image = clean(meta.get("content"))
+                if image:
+                    return image
 
+        # 3) Check every image on the SBC page
+        for img in page.find_all("img"):
+            for attr in (
+                "src",
+                "data-src",
+                "data-original",
+                "data-lazy-src",
+                "data-lazy",
+                "data-image",
+                "data-url",
+            ):
+                image = clean(img.get(attr))
 
-def find_expires_in(page):
-    """fut.gg's own 'expires in' text (e.g. '6 days'), or '' if it isn't there."""
-    m = re.search(r'expiresIn:"([^"]+)"', page_text(page))
-    return m.group(1).strip() if m else ""
+                if image:
+                    return image
 
+            srcset = img.get("srcset") or img.get("data-srcset")
 
-def find_repeatable(page):
-    """How many times the SBC can be repeated (e.g. '3x'), or '' if not repeatable."""
-    html = page_text(page)
-    if "isRepeatable:!1" in html:
-        return ""
-    m = re.search(r"numberOfRepeats:(\d+)", html)
-    if m and int(m.group(1)) > 0:
-        return f"{m.group(1)}x"
-    return ""
+            if srcset:
+                for item in srcset.split(","):
+                    image = clean(item.strip().split()[0])
 
+                    if image:
+                        return image
 
-def find_score(page):
-    """fut.gg's SBC score/points value (the number next to the diamond icon on
-    the site), e.g. '2,500', or '' if not found."""
-    html = page_text(page)
-    m = re.search(r'scoreRequirement:(\d+)', html)
-    if m:
-        return f"{int(m.group(1)):,}"
-    return ""
+    except requests.RequestException as e:
+        print(f"Could not fetch SBC page for image: {e}")
 
+    return None
 
 def to_embed(sbc):
-    description = f"## 🆕 {sbc['title']}\n[More details]({sbc['url']})"
+    description = f"## {sbc['title']}"
 
     if sbc["description"]:
-        description += "\n" + sbc["description"]
+        description += "\n\n" + sbc["description"]
 
     if sbc["requirements"]:
         description += (
-            "\n## 🧩 Requirements\n"
+            "\n\n## 🧩 Requirements\n"
             + "\n".join(sbc["requirements"])
         )
 
     if sbc["rewards"]:
         description += (
-            "\n## 🎁 Rewards\n"
+            "\n\n## 🎁 Rewards\n"
             + "\n".join(sbc["rewards"])
         )
 
-    if sbc["repeatable"]:
-        description += f"\n## 🔁 Repeatable\n{sbc['repeatable']}"
-
-    if sbc["expires"]:
-        description += f"\n## ⏰ Available for\n{sbc['expires']}"
-
     embed = {
+        "title": sbc["title"][:256],
+        "url": sbc["url"],
         "description": description.strip()[:4000],
         "color": 0x2ECC71,
     }
 
     if sbc["image"]:
-        # Player-card rewards get the bigger, full-width "image" slot; every
-        # other SBC gets the smaller "thumbnail" slot instead.
-        key = "image" if sbc.get("is_player_reward") else "thumbnail"
-        embed[key] = {"url": sbc["image"]}
+        embed["image"] = {
+            "url": sbc["image"]
+        }
 
     print("DEBUG EMBED:")
     print(json.dumps(embed, indent=2, ensure_ascii=False))
 
     return embed
 
+def find_requirements(page):
+    """Extract SBC requirements while keeping their original wording.
+
+    Only lines that actually READ like a requirement are kept - each one
+    must START WITH a phrase real fut.gg requirements use ("Min. ...",
+    "Score: ...", "Player OVR ...", etc). Matching anywhere in the text
+    (the old approach) also caught the site's own filter/category menu -
+    things like "Gold Players", "League: All" - which aren't requirements
+    for the SBC at all. This is the only change from before.
+    """
+
+    requirement_start = re.compile(
+        r"^(min\.|max\.|score:|player ovr|team rating|squad total chemistry"
+        r"|player quality|players from|nations? in squad|clubs? in squad"
+        r"|leagues? in squad|nationalities in squad)",
+        re.I,
+    )
+
+    requirements = []
+
+    for element in page.find_all(["li", "p", "div", "span", "td"]):
+        text = element.get_text(" ", strip=True)
+
+        if not text or len(text) > 180:
+            continue
+
+        if requirement_start.match(text):
+            text = re.sub(r"\s+", " ", text).strip()
+
+            if text not in requirements:
+                requirements.append(text)
+
+    # Remove duplicate entries caused by nested HTML elements.
+    cleaned = []
+
+    for requirement in requirements:
+        if any(
+            requirement != other
+            and requirement in other
+            for other in requirements
+        ):
+            continue
+
+        cleaned.append(requirement)
+
+    return cleaned
+  
 
 def find_new_sbcs(html):
     soup = BeautifulSoup(html, "html.parser")
@@ -382,43 +392,32 @@ def find_new_sbcs(html):
     for url, anchors in groups.items():
         if not any(a.find(string=NEW_BADGE) for a in anchors):
             continue
-
+ 
         title = clean_title(anchors) or url.rstrip("/").split("/")[-1]
         card = card_container(anchors[0])
 
-        # Fetch the SBC page once so we can use it for requirements,
-        # expiry and repeat count.
+        # Fetch the SBC page once so we can use it for both
+        # requirements and image detection.
         try:
             page = BeautifulSoup(get(url), "html.parser")
         except requests.RequestException as e:
             print(f"Could not fetch SBC page {url}: {e}")
             page = None
 
-        challenge_names = find_challenge_names(page, title) if page else []
-        requirements = challenge_names or (find_requirements(page) if page else [])
-        expires = find_expires_in(page) if page else ""
-        repeatable = find_repeatable(page) if page else ""
-        score = find_score(page) if page else ""
-        if score:
-            requirements.insert(0, f"💎 Score: {score}")
+        requirements = find_requirements(page) if page else []
 
         new.append(
             {
                 "url": url,
                 "title": title,
                 "description": find_description(anchors, title),
-                "rewards": find_rewards(card) or ([find_player_award(page)] if page and find_player_award(page) else []),
+                "rewards": find_rewards(card),
                 "requirements": requirements,
-                "expires": expires,
-                "repeatable": repeatable,
-                "score": score,
-                "image": find_image(card, url, page),
-                "is_player_reward": bool(page and find_player_card_image(page)),
+                "image": find_image(card, url),
             }
         )
 
     return new
-
 
 def post(embeds):
     for i in range(0, len(embeds), 10):  # Discord allows 10 embeds per message
@@ -439,45 +438,9 @@ def post(embeds):
         r.raise_for_status()
 
 
-def build_sbc(url, page):
-    """Build an sbc dict straight from one SBC page (used by TEST_URL)."""
-    title_tag = page.find("h1") or page.find("title")
-    title = title_tag.get_text(" ", strip=True) if title_tag else url.rstrip("/").split("/")[-1]
-    title = re.sub(r"\s*-\s*EA SPORTS FC.*$", "", title).strip()
-
-    challenge_names = find_challenge_names(page, title)
-    requirements = challenge_names or find_requirements(page)
-    score = find_score(page)
-    if score:
-        requirements.insert(0, f"💎 Score: {score}")
-
-    return {
-        "url": url,
-        "title": title,
-        "description": "",
-        "rewards": find_rewards(page) or ([find_player_award(page)] if find_player_award(page) else []),
-        "requirements": requirements,
-        "expires": find_expires_in(page),
-        "repeatable": find_repeatable(page),
-        "score": score,
-        "image": find_image(page, url, page),
-        "is_player_reward": bool(find_player_card_image(page)),
-    }
-
-
 def main():
     if not WEBHOOK and not DRY_RUN:
         sys.exit("DISCORD_WEBHOOK_URL is not set")
-
-    if TEST_URL:
-        print(f"TEST_URL set - posting just this one SBC: {TEST_URL}")
-        page = BeautifulSoup(get(TEST_URL), "html.parser")
-        embed = to_embed(build_sbc(TEST_URL, page))
-        if DRY_RUN:
-            print(json.dumps([embed], indent=2, ensure_ascii=False))
-        else:
-            post([embed])
-        return
 
     posted = set(json.loads(STATE_FILE.read_text())) if STATE_FILE.exists() else set()
     new = [s for s in find_new_sbcs(get(LIST_URL)) if TEST_MODE or s["url"] not in posted]
