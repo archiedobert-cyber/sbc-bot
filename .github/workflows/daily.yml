@@ -2,11 +2,11 @@ name: New SBC alerts
 
 on:
   schedule:
-    # GitHub cron is UTC. 6:05pm UK is 17:05 UTC in summer (BST) and 18:05 UTC in
-    # winter (GMT), so both are listed and the "gate" step below lets through
-    # only the run that lands at 6pm UK time.
-    - cron: "0 17 * * *"
-    - cron: "0 18 * * *"
+    # GitHub cron is UTC. 6:04pm UK is 17:04 UTC in summer (BST) and 18:04 UTC
+    # in winter (GMT), so both are listed and the "gate" step below lets
+    # through only the run that lands at 6:04pm UK time.
+    - cron: "4 17 * * *"
+    - cron: "4 18 * * *"
   workflow_dispatch:       # lets you run it manually from the Actions tab
     inputs:
       test:
@@ -15,12 +15,6 @@ on:
         description: "Test"
         type: boolean
         default: false
-      sbc_url:
-        # Paste one SBC's fut.gg link here to post just that SBC, skipping the
-        # site scan entirely. Leave blank for a normal run.
-        description: "Test one SBC URL (optional)"
-        type: string
-        default: ""
 
 permissions:
   contents: write          # needed to save posted.json back to the repo
@@ -33,11 +27,11 @@ jobs:
   post:
     runs-on: ubuntu-latest
     steps:
-      - name: Gate - only continue at 6pm UK (manual runs always continue)
+      - name: Gate - only continue at 6:04pm UK (manual runs always continue)
         id: gate
         run: |
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(TZ=Europe/London date +%H)" != "18:05" ]; then
-            echo "Not 6:05pm in the UK - skipping"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(TZ=Europe/London date +%H:%M)" != "18:04" ]; then
+            echo "Not 6:04pm in the UK - skipping"
             echo "go=false" >> "$GITHUB_OUTPUT"
           else
             echo "go=true" >> "$GITHUB_OUTPUT"
@@ -60,7 +54,6 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TEST_MODE: ${{ inputs.test && '1' || '' }}
-          TEST_URL: ${{ inputs.sbc_url }}
 
       - name: Save posted list
         if: steps.gate.outputs.go == 'true'
