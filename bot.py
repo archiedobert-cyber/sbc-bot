@@ -276,7 +276,13 @@ def find_requirements(page):
     return dedupe(collect(page.find_all(["p", "div", "span", "td"])))
 
 
-RESERVED_HEADINGS = {"requirements", "eligible players", "rewards", "reward"}
+RESERVED_HEADINGS = {
+    "requirements", "eligible players", "rewards", "reward",
+    # the site's own left-hand navigation menu - never real requirements
+    "featured", "players", "evolutions", "gg club", "sbcs", "objectives",
+    "squad", "market", "leaderboards", "campaigns", "community tools",
+    "resources", "latest squads",
+}
 
 
 def find_challenge_names(page, title):
@@ -284,7 +290,9 @@ def find_challenge_names(page, title):
     v Rangers", "FC Porto v SL Benfica", ...), return their names in order.
     Returns [] for an ordinary single-segment SBC."""
     names = []
-    for tag in page.find_all(["h2", "h3", "h4", "h5", "h6"]):
+  container = page.find("main") or page.body or page
+    names = []
+    for tag in container.find_all(["h2", "h3", "h4", "h5", "h6"]):
         text = tag.get_text(" ", strip=True)
         if not text or text.lower() in RESERVED_HEADINGS:
             continue
