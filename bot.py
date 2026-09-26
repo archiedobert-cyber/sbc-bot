@@ -289,8 +289,7 @@ def find_challenge_names(page, title):
     """If the SBC has multiple challenge segments (e.g. Marquee Matchups' "Celtic
     v Rangers", "FC Porto v SL Benfica", ...), return their names in order.
     Returns [] for an ordinary single-segment SBC."""
-    names = []
-  container = page.find("main") or page.body or page
+    container = page.find("main") or page.body or page
     names = []
     for tag in container.find_all(["h2", "h3", "h4", "h5", "h6"]):
         text = tag.get_text(" ", strip=True)
