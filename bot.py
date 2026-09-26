@@ -3,6 +3,7 @@
 Env vars:
   DISCORD_WEBHOOK_URL  webhook to post to (GitHub secret)
   DRY_RUN=1            print what would be posted instead of sending it
+  TEST_URL             scrape this URL instead of fut.gg/sbc/ (for testing)
 """
 import json
 import os
@@ -16,7 +17,7 @@ import requests
 from bs4 import BeautifulSoup
 
 BASE = "https://www.fut.gg"
-LIST_URL = f"{BASE}/sbc/"
+LIST_URL = os.environ.get("TEST_URL") or f"{BASE}/sbc/"
 STATE_FILE = Path("posted.json")  # remembers what's already been posted
 WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL")
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
@@ -36,6 +37,16 @@ SBC_HREF = re.compile(
 # The badge must be exactly "New" (so a title like "Newcastle Special" won't match)
 NEW_BADGE = re.compile(r"^\s*new\s*$", re.I)
 GENERIC_OG_IMAGE = "fut-social"  # the site-wide fallback image, not SBC-specific
+
+# Lines that describe an actual eligibility/build requirement, e.g.
+# "Player OVR: Min. 45", "Min. Team Rating: 84", "Score: 4,000",
+# "Min. 2 Players from: Germany", "Min. Squad Total Chemistry Points: 18"
+REQUIREMENT_LINE = re.compile(
+    r"^(min\.|max\.|score:|player ovr|team rating|squad total chemistry"
+    r"|player quality|players from|nations? in squad|clubs? in squad"
+    r"|leagues? in squad|nationalities in squad)",
+    re.I,
+)
 
 # Title line shown above the SBC cards - edit the text/emojis however you like
 HEADER = "## 🚨🆕 **NEW SBC ALERT** 🆕🚨\n-# *Hover Bot brought to you by SKELETOR*"
@@ -92,21 +103,39 @@ def find_rewards(card):
     return rewards
 
 
-def find_image(card, url):
-    # 1) an image on the card itself (ignoring pack/coin icons)
+def find_requirements(soup):
+    """Requirement/eligibility lines live on the SBC's own page, not the listing."""
+    main = soup.find("main") or soup.body or soup
+    seen, reqs = set(), []
+    for s in main.find_all(string=True):
+        text = s.strip()
+        if text and text not in seen and not s.find_parent("a") and REQUIREMENT_LINE.match(text):
+            seen.add(text)
+            reqs.append(text)
+    return reqs
+
+
+def fetch_extra(card, url):
+    """One fetch of the SBC's own page: its requirements, plus a fallback image
+    if the card on the listing page didn't have one."""
+    image = None
     for img in card.find_all("img"):
         src = img.get("src") or img.get("data-src") or ""
         if src and "public-assets" not in src:
-            return urljoin(BASE, src)
-    # 2) the SBC page's own preview image
+            image = urljoin(BASE, src)
+            break
+
     try:
-        page = BeautifulSoup(get(url), "html.parser")
-        og = page.find("meta", attrs={"property": "og:image"})
-        if og and og.get("content") and GENERIC_OG_IMAGE not in og["content"]:
-            return og["content"]
+        soup = BeautifulSoup(get(url), "html.parser")
     except requests.RequestException:
-        pass
-    return None
+        return {"requirements": [], "image": image}
+
+    if image is None:
+        og = soup.find("meta", attrs={"property": "og:image"})
+        if og and og.get("content") and GENERIC_OG_IMAGE not in og["content"]:
+            image = og["content"]
+
+    return {"requirements": find_requirements(soup), "image": image}
 
 
 def find_new_sbcs(html):
@@ -125,13 +154,15 @@ def find_new_sbcs(html):
             continue
         title = clean_title(anchors) or url.rstrip("/").split("/")[-1]
         card = card_container(anchors[0])
+        extra = fetch_extra(card, url)
         new.append(
             {
                 "url": url,
                 "title": title,
                 "description": find_description(anchors, title),
                 "rewards": find_rewards(card),
-                "image": find_image(card, url),
+                "requirements": extra["requirements"],
+                "image": extra["image"],
             }
         )
     return new
@@ -139,8 +170,10 @@ def find_new_sbcs(html):
 
 def to_embed(sbc):
     description = sbc["description"]
+    if sbc["requirements"]:
+        description += "\n\n**🧩 Requirements:** " + ", ".join(sbc["requirements"])
     if sbc["rewards"]:
-        description += "\n\n**Rewards:** " + ", ".join(sbc["rewards"])
+        description += "\n\n**🎁 Rewards:** " + ", ".join(sbc["rewards"])
     embed = {
         "title": f"🆕 {sbc['title']}"[:256],
         "url": sbc["url"],
