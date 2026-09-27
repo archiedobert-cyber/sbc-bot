@@ -2,11 +2,13 @@ name: New SBC alerts
 
 on:
   schedule:
-    # GitHub cron is UTC. 7pm UK is 18:00 UTC in summer (BST) and 19:00 UTC in
+    # GitHub cron is UTC. 9pm UK is 20:00 UTC in summer (BST) and 21:00 UTC in
     # winter (GMT), so both are listed and the "gate" step below lets through
-    # 
-    - cron: "18 * * *"
-    - cron: "19 * * *"
+    # only the run that lands at 9pm UK time. Scheduled a few minutes past the
+    # hour, not on it - "on the hour" is GitHub's busiest queue slot and was
+    # the cause of the 10-15 minute delay.
+    - cron: "20 * * *"
+    - cron: "21 * * *"
   workflow_dispatch:       # lets you run it manually from the Actions tab
     inputs:
       test:
@@ -27,11 +29,11 @@ jobs:
   post:
     runs-on: ubuntu-latest
     steps:
-      - name: Gate - only continue at 6:00pm UK (manual runs always continue)
+      - name: Gate - only continue at 9:00pm UK (manual runs always continue)
         id: gate
         run: |
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(TZ=Europe/London date +%H:%M)" != "18:00" ]; then
-            echo "Not 6:00pm in the UK - skipping"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(TZ=Europe/London date +%H:%M)" != "21:00" ]; then
+            echo "Not 9:00pm in the UK - skipping"
             echo "go=false" >> "$GITHUB_OUTPUT"
           else
             echo "go=true" >> "$GITHUB_OUTPUT"
