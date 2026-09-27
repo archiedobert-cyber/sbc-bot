@@ -4,9 +4,7 @@ on:
   schedule:
     # GitHub cron is UTC. 7pm UK is 18:00 UTC in summer (BST) and 19:00 UTC in
     # winter (GMT), so both are listed and the "gate" step below lets through
-    # only the run that lands at 7pm UK time. Scheduled a few minutes past the
-    # hour, not on it - "on the hour" is GitHub's busiest queue slot and was
-    # the cause of the 10-15 minute delay.
+    # 
     - cron: "18 * * *"
     - cron: "19 * * *"
   workflow_dispatch:       # lets you run it manually from the Actions tab
