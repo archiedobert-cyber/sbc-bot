@@ -7,8 +7,8 @@ on:
     # only the run that lands at 6pm UK time. Scheduled a few minutes past the
     # hour, not on it - "on the hour" is GitHub's busiest queue slot and was
     # the cause of the 10-15 minute delay.
-    - cron: "3 17 * * *"
-    - cron: "3 18 * * *"
+    - cron: "17 * * *"
+    - cron: "18 * * *"
   workflow_dispatch:       # lets you run it manually from the Actions tab
     inputs:
       test:
@@ -29,11 +29,11 @@ jobs:
   post:
     runs-on: ubuntu-latest
     steps:
-      - name: Gate - only continue at 6:03pm UK (manual runs always continue)
+      - name: Gate - only continue at 6:00pm UK (manual runs always continue)
         id: gate
         run: |
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(TZ=Europe/London date +%H:%M)" != "18:03" ]; then
-            echo "Not 6:03pm in the UK - skipping"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(TZ=Europe/London date +%H:%M)" != "18:00" ]; then
+            echo "Not 6:00pm in the UK - skipping"
             echo "go=false" >> "$GITHUB_OUTPUT"
           else
             echo "go=true" >> "$GITHUB_OUTPUT"
