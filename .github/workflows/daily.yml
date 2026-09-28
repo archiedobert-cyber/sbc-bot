@@ -17,6 +17,10 @@ on:
         description: "Test"
         type: boolean
         default: false
+      test_url:
+        description: "Test a specific SBC: paste its fut.gg link (optional)"
+        type: string
+        default: ""
 
 permissions:
   contents: write          # needed to save posted.json back to the repo
@@ -58,6 +62,7 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TEST_MODE: ${{ inputs.test && '1' || '' }}
+          TEST_URL: ${{ inputs.test_url }}
 
       - name: Save posted list
         if: steps.gate.outputs.go == 'true'
