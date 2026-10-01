@@ -40,7 +40,7 @@ SBC_HREF = re.compile(
 NEW_BADGE = re.compile(r"^\s*new\s*$", re.I)
 
 # Title line shown above the SBC cards - edit the text/emojis however you like
-HEADER = "# 🚨 🆕 **NEW SBC** 🆕 🚨"
+HEADER = "# 🚨 🧩 **NEW SBC** 🧩 🚨"
 
 # Message posted at the very bottom, after all the SBC cards.
 # Edit the text/emojis/link however you like, or set it to "" for no footer.
