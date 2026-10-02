@@ -48,7 +48,7 @@ FOOTER = ""
 
 # Role to ping in the footer (pings once per post). Paste the role's ID - numbers
 # only, e.g. "123456789012345678" - or leave as "" for no ping.
-PING_ROLE_ID = "1551540516238131270"
+PING_ROLE_ID = ""
 
 
 def get(url):
