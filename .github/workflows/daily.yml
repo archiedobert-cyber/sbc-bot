@@ -5,8 +5,8 @@ on:
     # GitHub cron is UTC. 6pm UK is 17:00 UTC in summer (BST) and 18:00 UTC in
     # winter (GMT), so both are listed and the "gate" step below lets through
     # only the run that lands at 6pm UK time.
-    - cron: "0 17 * * *"
-    - cron: "0 18 * * *"
+    - cron: "1 17 * * *"
+    - cron: "1 18 * * *"
   workflow_dispatch:       # lets you run it manually from the Actions tab
     inputs:
       test:
