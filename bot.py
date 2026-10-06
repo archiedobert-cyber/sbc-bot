@@ -2,6 +2,7 @@
 
 Env vars:
   DISCORD_WEBHOOK_URL  webhook to post to (GitHub secret)
+  PING_ROLE_ID         role ID to ping after the post (GitHub secret)
   DRY_RUN=1            print what would be posted instead of sending it
   TEST_MODE=1          post every current "New" SBC, even if already posted
   TEST_URL=<sbc link>  post just this one SBC page, skipping the site scan
