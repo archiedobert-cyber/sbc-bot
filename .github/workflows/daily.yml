@@ -1,22 +1,14 @@
 name: New SBC alerts
 
 on:
-  schedule:
-    # GitHub cron is UTC. 6pm UK is 17:00 UTC in summer (BST) and 18:00 UTC in
-    # winter (GMT), so both are listed and the "gate" step below lets through
-    # only the run that lands at 6pm UK time.
-    - cron: "1 17 * * *"
-    - cron: "1 18 * * *"
-  workflow_dispatch:       # lets you run it manually from the Actions tab
+  workflow_dispatch:
     inputs:
       test:
-        # Ticked = post every SBC currently labelled New to Discord, even if it
-        # was posted before. Unticked = normal run (only posts new ones).
-        description: "Test"
+        description: "Test mode"
         type: boolean
         default: false
       test_url:
-        description: "Test a specific SBC: paste its fut.gg link (optional)"
+        description: "Test URL"
         type: string
         default: ""
 
