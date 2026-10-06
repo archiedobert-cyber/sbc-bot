@@ -32,9 +32,10 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - run: python bot.py
+           - run: python bot.py
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PING_ROLE_ID: ${{ secrets.PING_ROLE_ID }}
           TEST_MODE: ${{ inputs.test && '1' || '' }}
           TEST_URL: ${{ inputs.test_url }}
 
