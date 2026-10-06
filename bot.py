@@ -46,9 +46,9 @@ HEADER = "# 🚨 🧩 **NEW SBC** 🧩 🚨"
 # Edit the text/emojis/link however you like, or set it to "" for no footer.
 FOOTER = ""
 
-# Role to ping in the footer (pings once per post). Paste the role's ID - numbers
-# only, e.g. "123456789012345678" - or leave as "" for no ping.
-PING_ROLE_ID = "1419737023882854411"
+# Role to ping in the footer (pings once per post). Comes from the PING_ROLE_ID
+# GitHub secret - numbers only. If the secret is missing, no ping is sent.
+PING_ROLE_ID = os.environ.get("PING_ROLE_ID", "").strip()
 
 
 def get(url):
