@@ -23,39 +23,22 @@ jobs:
   post:
     runs-on: ubuntu-latest
     steps:
-      - name: Gate - only continue in the 6pm UK hour (manual runs always continue)
-        id: gate
-        run: |
-          # Checks the hour only, not the minute: GitHub often starts scheduled
-          # runs several minutes late, and an exact-minute check would skip them.
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(TZ=Europe/London date +%H)" != "18" ]; then
-            echo "Not the 6pm UK hour - skipping"
-            echo "go=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "go=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@v4
-        if: steps.gate.outputs.go == 'true'
 
       - uses: actions/setup-python@v5
-        if: steps.gate.outputs.go == 'true'
         with:
           python-version: "3.12"
           cache: pip
 
       - run: pip install -r requirements.txt
-        if: steps.gate.outputs.go == 'true'
 
       - run: python bot.py
-        if: steps.gate.outputs.go == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TEST_MODE: ${{ inputs.test && '1' || '' }}
           TEST_URL: ${{ inputs.test_url }}
 
       - name: Save posted list
-        if: steps.gate.outputs.go == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
