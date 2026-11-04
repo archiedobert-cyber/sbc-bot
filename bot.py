@@ -1,11 +1,18 @@
-"""Posts SBCs labelled "New" on fut.gg/sbc to a Discord channel via webhook.
+"""Posts SBCs labelled "New" on fut.gg/sbc to Discord channels via webhook.
 
 Env vars:
-  DISCORD_WEBHOOK_URL  webhook to post to (GitHub secret)
-  PING_ROLE_ID         role ID to ping after the post (GitHub secret)
-  DRY_RUN=1            print what would be posted instead of sending it
-  TEST_MODE=1          post every current "New" SBC, even if already posted
-  TEST_URL=<sbc link>  post just this one SBC page, skipping the site scan
+  DISCORD_WEBHOOK_URL    webhook to post to - server 1 (GitHub secret)
+  PING_ROLE_ID           role ID to ping after the post in server 1 (GitHub secret)
+  DISCORD_WEBHOOK_URL_2  second webhook - server 2 (optional GitHub secret)
+  PING_ROLE_ID_2         role ID to ping in server 2 (optional GitHub secret)
+  DRY_RUN=1              print what would be posted instead of sending it
+  TEST_MODE=1            post every current "New" SBC to every server, even if
+                         already posted
+  TEST_URL=<sbc link>    post just this one SBC page to server 1 only, skipping
+                         the site scan
+
+The name and picture each post appears under are the ones set on the Discord
+webhook itself; this script does not override them.
 """
 import json
 import os
@@ -21,7 +28,19 @@ from bs4 import BeautifulSoup
 BASE = "https://www.fut.gg"
 LIST_URL = f"{BASE}/sbc/"
 STATE_FILE = Path("posted.json")  # remembers what's already been posted
-WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL")
+
+# Each destination is (webhook_url, role_id_to_ping). Server 2 is used only if
+# its webhook secret is set; leave it unset and the bot posts to server 1 only.
+_RAW_DESTINATIONS = [
+    (os.environ.get("DISCORD_WEBHOOK_URL"), os.environ.get("PING_ROLE_ID")),
+    (os.environ.get("DISCORD_WEBHOOK_URL_2"), os.environ.get("PING_ROLE_ID_2")),
+]
+DESTINATIONS = [
+    (url.strip(), (role or "").strip() or None)
+    for url, role in _RAW_DESTINATIONS
+    if url and url.strip()
+]
+
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 TEST_MODE = os.environ.get("TEST_MODE") == "1"
 TEST_URL = os.environ.get("TEST_URL", "").strip()
@@ -46,10 +65,6 @@ HEADER = "# 🚨 🧩 **NEW SBC** 🧩 🚨"
 # Message posted at the very bottom, after all the SBC cards.
 # Edit the text/emojis/link however you like, or set it to "" for no footer.
 FOOTER = ""
-
-# Role to ping in the footer (pings once per post). Comes from the PING_ROLE_ID
-# GitHub secret - numbers only. If the secret is missing, no ping is sent.
-PING_ROLE_ID = os.environ.get("PING_ROLE_ID", "").strip()
 
 
 def get(url):
@@ -428,23 +443,52 @@ def find_new_sbcs(html):
     return new
 
 
-def post(embeds):
+# ---------------------------------------------------------------------------
+# Sending
+# ---------------------------------------------------------------------------
+def post_message(url, payload):
+    """Post one message to one webhook. The name and picture shown are the
+    ones set on the webhook itself. Waits and retries if Discord rate limits."""
+    for _ in range(3):
+        r = requests.post(url, json=payload, timeout=30)
+        if r.status_code == 429:
+            time.sleep(float(r.json().get("retry_after", 2)))
+            continue
+        r.raise_for_status()
+        return
+    raise RuntimeError("Discord kept rate limiting this webhook.")
+
+
+def post_to_one(url, role_id, embeds):
+    """Send the full set of SBC cards (and the role ping / footer) to one server."""
     for i in range(0, len(embeds), 10):  # Discord allows 10 embeds per message
         payload = {"embeds": embeds[i : i + 10]}
         if i == 0:
             payload["content"] = HEADER
-        r = requests.post(WEBHOOK, json=payload, timeout=30)
-        r.raise_for_status()
+        post_message(url, payload)
         time.sleep(1)
 
-    if FOOTER or PING_ROLE_ID:
-        content = f"<@&{PING_ROLE_ID}> {FOOTER}".strip() if PING_ROLE_ID else FOOTER
+    if FOOTER or role_id:
+        content = f"<@&{role_id}> {FOOTER}".strip() if role_id else FOOTER
         # flags=4 stops Discord adding a big link preview under the footer
         payload = {"content": content, "flags": 4}
-        if PING_ROLE_ID:  # only this role can be pinged, nothing else
-            payload["allowed_mentions"] = {"roles": [PING_ROLE_ID]}
-        r = requests.post(WEBHOOK, json=payload, timeout=30)
-        r.raise_for_status()
+        if role_id:  # only this role can be pinged, nothing else
+            payload["allowed_mentions"] = {"roles": [role_id]}
+        post_message(url, payload)
+
+
+def send_everywhere(embeds, destinations):
+    """Post to each server in turn. One server failing doesn't stop the others.
+    Returns a list of error messages (empty if everything worked)."""
+    errors = []
+    for n, (url, role_id) in enumerate(destinations, start=1):
+        try:
+            post_to_one(url, role_id, embeds)
+            print(f"Server {n}: posted.")
+        except Exception as exc:
+            # Only the error type is logged, so a webhook URL never appears in the log.
+            errors.append(f"Server {n} failed: {type(exc).__name__}")
+    return errors
 
 
 def build_sbc(url, page):
@@ -474,7 +518,7 @@ def build_sbc(url, page):
 
 
 def main():
-    if not WEBHOOK and not DRY_RUN:
+    if not DESTINATIONS and not DRY_RUN:
         sys.exit("DISCORD_WEBHOOK_URL is not set")
 
     if TEST_URL:
@@ -484,7 +528,10 @@ def main():
         if DRY_RUN:
             print(json.dumps([embed], indent=2, ensure_ascii=False))
         else:
-            post([embed])
+            # Test posts go to the first server only.
+            errors = send_everywhere([embed], DESTINATIONS[:1])
+            if errors:
+                sys.exit("; ".join(errors))
         return
 
     posted = set(json.loads(STATE_FILE.read_text())) if STATE_FILE.exists() else set()
@@ -498,8 +545,15 @@ def main():
         print(json.dumps(embeds, indent=2, ensure_ascii=False))
         return
 
-    post(embeds)
-    STATE_FILE.write_text(json.dumps(sorted(posted | {s["url"] for s in new}), indent=2))
+    errors = send_everywhere(embeds, DESTINATIONS)
+
+    # Save the posted list if at least one server received the SBCs, so a
+    # re-run doesn't repost them to the server that already got them.
+    if len(errors) < len(DESTINATIONS):
+        STATE_FILE.write_text(json.dumps(sorted(posted | {s["url"] for s in new}), indent=2))
+
+    if errors:
+        sys.exit("; ".join(errors))
 
 
 if __name__ == "__main__":
