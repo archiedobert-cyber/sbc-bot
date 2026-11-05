@@ -6,10 +6,11 @@ Env vars:
   DISCORD_WEBHOOK_URL_2  second webhook - server 2 (optional GitHub secret)
   PING_ROLE_ID_2         role ID to ping in server 2 (optional GitHub secret)
   DRY_RUN=1              print what would be posted instead of sending it
-  TEST_MODE=1            post every current "New" SBC to every server, even if
-                         already posted
-  TEST_URL=<sbc link>    post just this one SBC page to server 1 only, skipping
-                         the site scan
+  TEST_MODE=1            post every current "New" SBC, even if already posted
+  TEST_URL=<sbc link>    post just this one SBC page, skipping the site scan
+  TEST_TARGET=<where>    which server(s) a test run is sent to: both, "server 1"
+                         or "server 2" (the 'Where test runs are sent' dropdown).
+                         Live runs always post to every server.
 
 The name and picture each post appears under are the ones set on the Discord
 webhook itself; this script does not override them.
@@ -40,6 +41,27 @@ DESTINATIONS = [
     for url, role in _RAW_DESTINATIONS
     if url and url.strip()
 ]
+
+
+def _pick_test_destinations():
+    """Where a test run goes, from the 'Where test runs are sent' dropdown
+    (TEST_TARGET: both / server 1 / server 2). Live runs never use this."""
+    target = os.environ.get("TEST_TARGET", "both").strip().lower()
+    slots = {"server 1": [0], "server 2": [1]}.get(target, [0, 1])
+    chosen = []
+    for i in slots:
+        url, role = _RAW_DESTINATIONS[i]
+        if url and url.strip():
+            chosen.append((url.strip(), (role or "").strip() or None))
+        else:
+            print(f"Server {i + 1} has no webhook set - skipping it for this test.")
+    is_test = os.environ.get("TEST_MODE") == "1" or bool(os.environ.get("TEST_URL", "").strip())
+    if is_test and not chosen and os.environ.get("DRY_RUN") != "1":
+        sys.exit(f"No webhook is set for the test target '{target}'.")
+    return chosen
+
+
+TEST_DESTINATIONS = _pick_test_destinations()
 
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 TEST_MODE = os.environ.get("TEST_MODE") == "1"
@@ -528,8 +550,8 @@ def main():
         if DRY_RUN:
             print(json.dumps([embed], indent=2, ensure_ascii=False))
         else:
-            # Test posts go to the first server only.
-            errors = send_everywhere([embed], DESTINATIONS[:1])
+            # Test posts go where the 'Where test runs are sent' dropdown says.
+            errors = send_everywhere([embed], TEST_DESTINATIONS)
             if errors:
                 sys.exit("; ".join(errors))
         return
@@ -545,11 +567,13 @@ def main():
         print(json.dumps(embeds, indent=2, ensure_ascii=False))
         return
 
-    errors = send_everywhere(embeds, DESTINATIONS)
+    targets = TEST_DESTINATIONS if TEST_MODE else DESTINATIONS
+    errors = send_everywhere(embeds, targets)
 
     # Save the posted list if at least one server received the SBCs, so a
     # re-run doesn't repost them to the server that already got them.
-    if len(errors) < len(DESTINATIONS):
+    # Test runs never save, so testing one server can't make the other miss SBCs.
+    if not TEST_MODE and len(errors) < len(targets):
         STATE_FILE.write_text(json.dumps(sorted(posted | {s["url"] for s in new}), indent=2))
 
     if errors:
